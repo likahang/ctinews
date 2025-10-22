@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中天新聞網自動化</title>
+    <!-- 引入外部 CSS 檔案 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>中天新聞網自動化</h1>
+        <form id="urlForm" action="/generate_image" method="post">
+            <label for="url_input">請輸入網址:</label>
+            <input type="text" id="url_input" name="url" placeholder="例如: https://ctinews.com/news/items/57nGNjPYxk" required>
+            
+            <!-- 將兩個勾選框放入同一個 flex 容器中，實現水平排列 -->
+            <div class="options-container" style="display: flex; justify-content: center; gap: 30px; margin-top: 10px; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="show_source" name="show_source">
+                    <label for="show_source" style="margin: 0; font-size: 1em; font-weight: normal;">含資料來源</label>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="dual_image" name="dual_image">
+                    <label for="dual_image" style="margin: 0; font-size: 1em; font-weight: normal;">圖片雙框</label>
+                </div>
+            </div>
+
+            <!-- 新增：圖片雙框的數字輸入框 (預設隱藏) -->
+            <div id="dual_image_inputs" style="display: none; align-items: center; gap: 8px; margin-top: 10px;">
+                <label style="margin: 0; font-size: 1em; font-weight: normal;">圖</label>
+                <input type="number" id="image_index_1" name="image_index_1" min="1" style="width: 50px;" value="1">
+                <label style="margin: 0; font-size: 1em; font-weight: normal;">跟圖</label>
+                <input type="number" id="image_index_2" name="image_index_2" min="1" style="width: 50px;" value="2">
+</div>
+            <button type="submit">合成中天新聞網</button>
+        </form>
+
+        <div id="loading" class="loading">
+            <p>正在努力生成圖片中，請稍候...</p>
+        </div>
+
+
+
+        <div class="result-area">
+            {% if image_data_uri %}
+                <form id="regenerateForm" action="/generate_image" method="post">
+                    <!-- 隱藏欄位，用於儲存重新生成所需的狀態 -->
+                    <input type="hidden" name="url" value="{{ request.form.get('url') }}">
+                    {% if request.form.get('show_source') == 'on' %}
+                        <input type="hidden" name="show_source" value="on">
+                    {% endif %}
+                    {% if request.form.get('dual_image') == 'on' %}
+                        <input type="hidden" name="dual_image" value="on">
+                    {% endif %}
+                    <input type="hidden" name="image_index_1" value="{{ request.form.image_index_1 }}">
+                    <input type="hidden" name="image_index_2" value="{{ request.form.image_index_2 }}">
+
+                    <h2>生成結果:</h2>
+                    
+                    <div class="editable-field">
+                        <button type="button" class="edit-btn">編輯</button>
+                        <button type="button" class="save-btn" style="display:none;">儲存</button>
+                        <label>標題:</label>
+                        <input type="text" class="editable-input" name="edited_title" value="{{ title }}" readonly>
+                    </div>
+
+                    <div class="editable-field">
+                        <button type="button" class="edit-btn">編輯</button>
+                        <button type="button" class="save-btn" style="display:none;">儲存</button>
+                        <label>內容摘錄:</label>
+                        <textarea class="editable-input" name="edited_content" readonly>{{ content_snippet }}</textarea>
+                    </div>
+
+                    <div class="editable-field">
+                        <button type="button" class="edit-btn">編輯</button>
+                        <button type="button" class="save-btn" style="display:none;">儲存</button>
+                        <label>圖片來源描述:</label>
+                        <input type="text" class="editable-input" name="edited_alt_text" value="{{ alt_text }}" readonly>
+                    </div>
+
+                    <img src="{{ image_data_uri }}" alt="生成的排版圖片">
+                    <br>
+                    <a id="downloadLink" href="{{ image_data_uri }}" download="中天新聞網.png">下載圖片</a>
+                </form>
+            {% elif error %}
+                <p class="error-message">錯誤: {{ error }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('urlForm').addEventListener('submit', function() {
+            document.getElementById('loading').style.display = 'block';
+            document.querySelector('button[type="submit"]').disabled = true; // 提交時禁用按鈕
+        });
+
+        // 新增：監聽「圖片雙框」checkbox 的變化
+        document.getElementById('dual_image').addEventListener('change', function() {
+            const dualImageInputs = document.getElementById('dual_image_inputs');
+            if (this.checked) {
+                dualImageInputs.style.display = 'flex'; // 勾選時顯示
+            } else {
+                dualImageInputs.style.display = 'none'; // 取消勾選時隱藏
+            }
+        });
+
+        // 編輯功能邏輯
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const fieldDiv = this.closest('.editable-field');
+                const input = fieldDiv.querySelector('.editable-input');
+                input.readOnly = false;
+                input.focus();
+                this.style.display = 'none';
+                fieldDiv.querySelector('.save-btn').style.display = 'inline-block';
+            });
+        });
+
+        document.querySelectorAll('.save-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const fieldDiv = this.closest('.editable-field');
+                fieldDiv.querySelector('.editable-input').readOnly = true; // 鎖定輸入框即可，無需切換元素
+
+                // 觸發重新生成
+                document.getElementById('loading').style.display = 'block';
+                document.querySelector('button[type="submit"]').disabled = true;
+                document.getElementById('regenerateForm').submit();
+            });
+        });
+
+        // 自訂下載檔名功能
+        const downloadLink = document.getElementById('downloadLink');
+        if (downloadLink) {
+            downloadLink.addEventListener('click', function handleDownloadClick(event) {
+                // 阻止預設的下載行為
+                event.preventDefault();
+
+                const slug = prompt("請輸入Slag:");
+
+                // 如果使用者輸入了內容並按下確定
+                if (slug) {
+                    const now = new Date();
+                    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 月份是 0-11
+                    const day = now.getDate().toString().padStart(2, '0');
+                    const datePrefix = `${month}${day}`;
+                    
+                    // 設定新的檔名
+                    this.download = `${datePrefix}_${slug}.png`;
+                    this.click(); // 再次觸發點擊，這次會使用新檔名進行下載
+                }
+            }, { once: true }); // { once: true } 確保此監聽器只觸發一次，避免無限循環
+        }
+    </script>
+</body>
+</html>
