@@ -8,7 +8,7 @@ LAYOUT_CONFIG = {
     "layout": {
         "width": 1920,
         "height": 1080,
-        "background_path": "中天新聞網底圖.jpg",
+        "background_path": "ctinews_background.jpg", # 建議改為英文檔名
         "white_area_left": 35,
         "white_area_top": 142,
         "white_area_width": 1850,
