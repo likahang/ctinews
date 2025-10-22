@@ -86,7 +86,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
     
     # 1. 繪製標題區域
     title_cfg = cfg['title']
-    title_font = get_font(title_cfg['base_font_size'], bold=True)
+    title_font = get_font(title_cfg['base_font_size'], bold=False)
     title_text = data.get('title', '未找到標題')
 
     # 先用基本字體計算分行，以判斷是單行還是多行
