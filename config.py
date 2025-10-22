@@ -19,6 +19,7 @@ LAYOUT_CONFIG = {
 
     # --- 標題區域設定 ---
     "title": {
+        "font_path_regular": "NotoSansTC-Regular.ttf", # 常規字體路徑
         "font_path_bold": "NotoSansTC-Bold.ttf", # 粗體字體路徑 (如果需要)
         "base_font_size": 82,
         "max_font_size": 120,

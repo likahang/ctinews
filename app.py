@@ -10,6 +10,7 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from scraper import Scraper
+import re # 將 re 模組的導入移到檔案頂部
 from config import LAYOUT_CONFIG
 
 # 取得目前檔案所在的目錄
@@ -17,13 +18,18 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 def get_font(size, bold=False):
     """獲取思源黑體字體"""
-    # 假設字體檔案 'NotoSansTC-Regular.ttf' 放在與 app.py 同層的 'static' 資料夾中
-    # 這是部署到伺服器上的標準做法
-    font_path = os.path.join(APP_ROOT, 'static', 'NotoSansTC-Regular.ttf')
+    # 根據 bold 參數從 config 讀取對應的字體檔案名稱
+    if bold and LAYOUT_CONFIG['title'].get('font_path_bold'):
+        font_filename = LAYOUT_CONFIG['title']['font_path_bold']
+    else:
+        # 假設有一個常規字體的設定，如果沒有，則使用一個預設值
+        font_filename = LAYOUT_CONFIG['title'].get('font_path_regular', 'NotoSansTC-Regular.ttf')
+
+    font_path = os.path.join(APP_ROOT, 'static', font_filename)
     try:
         return ImageFont.truetype(font_path, size)
     except IOError:
-        print(f"警告: 無法在 {font_path} 找到字體檔案，將使用預設字體。")
+        print(f"警告: 無法在 '{font_path}' 找到字體檔案，將使用預設字體。")
         return ImageFont.load_default()
 
 def wrap_text(text, font, max_width):
@@ -448,7 +454,6 @@ def generate_image():
 @app.route('/debug_html', methods=['POST'])
 def debug_html():
     """診斷網頁 HTML 結構的路由"""
-    url = request.form.get('url')
     if not url:
         return "請提供 URL"
     
@@ -479,6 +484,7 @@ def debug_html():
         # 3. 查找所有包含 ctinews 圖片 URL 的文字
         debug_info.append("\n3. 搜尋頁面原始碼中是否包含圖片 URL:")
         if 'storage.ctinews.com/compression/files/default/cut-' in scraper.soup.prettify():
+            import re # 這裡的 import re 可以移除
             debug_info.append("   ✓ 找到 storage.ctinews.com 圖片 URL\n")
             # 提取圖片 URL
             urls = re.findall(r'https?://storage\.ctinews\.com[^"\s]+\.jpg', scraper.soup.prettify())
