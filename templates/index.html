@@ -151,6 +151,14 @@
                 }
             }, { once: true }); // { once: true } 確保此監聽器只觸發一次，避免無限循環
         }
+
+        // 新增：當使用者關閉分頁或離開頁面時，自動觸發登出
+        window.addEventListener('unload', function() {
+            // navigator.sendBeacon 是一種可靠的方式，
+            // 可以在頁面卸載時向伺服器發送請求，確保登出指令被執行。
+            // 我們不需要傳送任何資料，只需要觸發 /logout 路由即可。
+            navigator.sendBeacon("{{ url_for('logout') }}", new Blob());
+        });
     </script>
 </body>
 </html>
