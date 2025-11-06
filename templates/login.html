@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登入 - 中天新聞網自動化</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>登入系統</h1>
+        <form method="post">
+            <label for="password">請輸入密碼:</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">登入</button>
+        </form>
+
+        {% if error %}
+            <p class="error-message" style="margin-top: 20px;">{{ error }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>

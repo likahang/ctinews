@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session, redirect, url_for
 import base64
 import os
 import io
@@ -12,6 +12,7 @@ import textwrap
 from scraper import Scraper
 import re # 將 re 模組的導入移到檔案頂部
 from config import LAYOUT_CONFIG
+from functools import wraps
 
 # 取得目前檔案所在的目錄
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -334,17 +335,52 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
 
 app = Flask(__name__)
 
+# --- 密碼與 Session 設定 ---
+# 為了讓 session 運作，需要設定一個 secret_key
+# 在生產環境中，建議使用更複雜且來自環境變數的密鑰
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_default_secret_key_for_development')
+
+# 從環境變數讀取密碼，如果沒有設定，則使用一個預設密碼
+APP_PASSWORD = os.environ.get('APP_PASSWORD', 'ctinews')
+
 # --- 簡單的記憶體快取機制 ---
 url_cache = {}
 CACHE_TTL = 600  # 快取存活時間（秒），這裡設定為 10 分鐘
 
+# --- 登入裝飾器 ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if request.form.get('password') == APP_PASSWORD:
+            session['logged_in'] = True
+            next_url = request.args.get('next')
+            return redirect(next_url or url_for('index'))
+        else:
+            error = '密碼錯誤，請重試。'
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 @app.route('/')
+@login_required
 def index():
     """首頁路由，顯示網址輸入表單"""
     return render_template('index.html')
 
 @app.route('/generate_image', methods=['POST'])
+@login_required
 def generate_image():
     url = request.form.get('url')
     if not url:
@@ -452,6 +488,7 @@ def generate_image():
         return render_template('index.html', error=f"處理失敗: {str(e)}")
 
 @app.route('/debug_html', methods=['POST'])
+@login_required
 def debug_html():
     """診斷網頁 HTML 結構的路由"""
     if not url:
