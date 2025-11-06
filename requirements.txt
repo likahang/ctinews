@@ -1,6 +1,5 @@
 Flask
+Pillow
 requests
 beautifulsoup4
-Pillow
 gunicorn
-urllib3

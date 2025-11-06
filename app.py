@@ -3,6 +3,7 @@ import base64
 import os
 import io
 
+from datetime import timedelta
 # 引入原始腳本中的函式
 import sys
 from urllib.parse import urljoin, urlparse
@@ -343,6 +344,10 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_default_secret_key_for_de
 # 從環境變數讀取密碼，如果沒有設定，則使用一個預設密碼
 APP_PASSWORD = os.environ.get('APP_PASSWORD', 'ctinews')
 
+# 設定 session 的有效期限為 30 分鐘
+app.permanent_session_lifetime = timedelta(minutes=30)
+
+
 # --- 簡單的記憶體快取機制 ---
 url_cache = {}
 CACHE_TTL = 600  # 快取存活時間（秒），這裡設定為 10 分鐘
@@ -356,6 +361,12 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+@app.before_request
+def make_session_permanent():
+    # 在每個請求前，將 session 設為永久性，這樣才會套用 lifetime 設定
+    # 並且每次使用者有操作時，session 的到期時間會被自動刷新
+    session.permanent = True
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
@@ -368,10 +379,11 @@ def login():
             error = '密碼錯誤，請重試。'
     return render_template('login.html', error=error)
 
-@app.route('/logout')
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
     session.pop('logged_in', None)
-    return redirect(url_for('login'))
+    # 如果是 GET 請求 (手動點擊按鈕)，則重導向；如果是 POST (來自 sendBeacon)，則回傳空的回應即可
+    return redirect(url_for('login')) if request.method == 'GET' else ('', 204)
 
 @app.route('/')
 @login_required
@@ -491,11 +503,12 @@ def generate_image():
 @login_required
 def debug_html():
     """診斷網頁 HTML 結構的路由"""
+    url = request.form.get('url') # 新增：從表單中獲取 URL
     if not url:
         return "請提供 URL"
     
     try:
-        scraper = Scraper(url)
+        scraper = Scraper(url) # 現在 url 變數已定義
         debug_info = []
         debug_info.append("=== HTML 結構診斷 ===\n")
         
@@ -503,7 +516,7 @@ def debug_html():
         all_imgs = scraper.soup.find_all('img')
         debug_info.append(f"1. 整個頁面的 <img> 標籤總數: {len(all_imgs)}\n")
         for idx, img in enumerate(all_imgs[:10], 1):
-            src = get_image_src(img)
+            src = Scraper._get_image_src(img) # 修正：應使用 Scraper 類別的方法
             alt = img.get('alt', '(無)')
             debug_info.append(f"   圖片 {idx}:")
             debug_info.append(f"     src: {src[:100] if src else '(無)'}")
@@ -521,7 +534,7 @@ def debug_html():
         # 3. 查找所有包含 ctinews 圖片 URL 的文字
         debug_info.append("\n3. 搜尋頁面原始碼中是否包含圖片 URL:")
         if 'storage.ctinews.com/compression/files/default/cut-' in scraper.soup.prettify():
-            import re # 這裡的 import re 可以移除
+            # import re # 這裡的 import re 可以移除，因為檔案頂部已導入
             debug_info.append("   ✓ 找到 storage.ctinews.com 圖片 URL\n")
             # 提取圖片 URL
             urls = re.findall(r'https?://storage\.ctinews\.com[^"\s]+\.jpg', scraper.soup.prettify())
