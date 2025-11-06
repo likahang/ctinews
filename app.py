@@ -87,7 +87,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
     
     # 1. 繪製標題區域
     title_cfg = cfg['title']
-    title_font = get_font(title_cfg['base_font_size'], bold=True)
+    title_font = get_font(title_cfg['base_font_size'], bold=False)
     title_text = data.get('title', '未找到標題')
 
     # 先用基本字體計算分行，以判斷是單行還是多行
@@ -115,7 +115,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
             final_font_size_for_single_line = min(int(title_cfg['base_font_size'] * scale_factor), title_cfg['max_font_size'])
         
         # 獲取最終用於繪製的字體（可能已放大）
-        actual_drawing_font = get_font(final_font_size_for_single_line, bold=True)
+        actual_drawing_font = get_font(final_font_size_for_single_line, bold=False)
         
         # 重新計算原始文字的寬高，使用調整後的字體大小
         text_bbox = actual_drawing_font.getbbox(single_line_text)
