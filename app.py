@@ -218,8 +218,18 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
         img1_idx = dual_image_data.get('img1_idx')
         img2_idx = dual_image_data.get('img2_idx')
     
-        img1 = Scraper.download_image(img1_url) if img1_url else None
-        img2 = Scraper.download_image(img2_url) if img2_url else None
+        # 修正：從快取中獲取圖片，避免重新下載
+        cached_images = url_cache.get(dual_image_data.get('url'), {}).get('images', {})
+        
+        img1 = cached_images.get(img1_url)
+        if not img1 and img1_url:
+            img1 = Scraper.download_image(img1_url)
+            cached_images[img1_url] = img1
+
+        img2 = cached_images.get(img2_url)
+        if not img2 and img2_url:
+            img2 = Scraper.download_image(img2_url)
+            cached_images[img2_url] = img2
     
         # 計算每張圖片的寬度和間距
         gap = image_cfg['dual_image_gap']
@@ -275,7 +285,13 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
     else:
         image_url = data.get('image_url', '')
         if image_url and image_url != '未找到圖片':
-            downloaded_image = Scraper.download_image(image_url)
+            # 修正：從快取中獲取圖片，避免重新下載
+            cached_images = url_cache.get(data.get('url'), {}).get('images', {})
+            downloaded_image = cached_images.get(image_url)
+            
+            if not downloaded_image:
+                downloaded_image = Scraper.download_image(image_url)
+                cached_images[image_url] = downloaded_image
             
             if downloaded_image: # 圖片已成功下載
                 target_width = white_area_width
@@ -432,7 +448,11 @@ def generate_image():
             
             scraper = Scraper(url)
             # 將新的爬取結果存入快取
-            url_cache[url] = {'soup': scraper.soup, 'timestamp': current_time}
+            url_cache[url] = {
+                'soup': scraper.soup, 
+                'timestamp': current_time,
+                'images': {} # 為這個 URL 初始化一個圖片快取字典
+            }
 
         dual_image_data = None
         layout_image = None
@@ -461,6 +481,7 @@ def generate_image():
                 'img2_url': all_images[img2_idx - 1]['image_url'],
                 'img1_idx': img1_idx,
                 'img2_idx': img2_idx,
+                'url': url # 將當前 url 傳遞給繪圖函式以利快取
             }
             # 將 dual_image_data 同時指派給 result，以供後續程式碼使用
             result = dual_image_data
@@ -475,7 +496,8 @@ def generate_image():
                     'title': edited_title if edited_title is not None else original_data['title'],
                     'content': edited_content if edited_content is not None else original_data['content'],
                     'image_url': original_data['image_url'],
-                    'alt_text': edited_alt_text if edited_alt_text is not None else original_data['alt_text']
+                    'alt_text': edited_alt_text if edited_alt_text is not None else original_data['alt_text'],
+                    'url': url # 將當前 url 傳遞給繪圖函式以利快取
                 }
             else:
                 # 第一次生成
