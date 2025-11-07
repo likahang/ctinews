@@ -391,9 +391,12 @@ def index():
     """首頁路由，顯示網址輸入表單"""
     return render_template('index.html')
 
-@app.route('/generate_image', methods=['POST'])
+@app.route('/generate_image', methods=['GET', 'POST'])
 @login_required
 def generate_image():
+    if request.method == 'GET':
+        return redirect(url_for('index'))
+
     url = request.form.get('url')
     if not url:
         return render_template('index.html', error="請輸入有效的網址。")
@@ -422,7 +425,9 @@ def generate_image():
                 print(f"CACHE HIT for URL: {url}")
                 scraper = Scraper(url, soup=cached_entry['soup'])
             else:
-                scraper = Scraper(url) # 重新生成時需要 scraper 物件，但不會爬取
+                # 修正：重新生成時，也應該從快取中獲取 soup，避免重新爬取
+                print(f"CACHE HIT (with edits) for URL: {url}")
+                scraper = Scraper(url, soup=cached_entry['soup'])
         else:
             # 快取未命中或已過期，執行實際抓取
             print(f"CACHE MISS for URL: {url}")
