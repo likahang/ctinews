@@ -401,6 +401,11 @@ def generate_image():
     if not url:
         return render_template('index.html', error="請輸入有效的網址。")
 
+    # 終極修正：在執行任何潛在的耗時操作 (爬取或圖片下載) 之前，
+    # 立刻強制更新 session。這可以確保即使後續請求超時，
+    # 使用者的登入狀態也已經被安全地保存到瀏覽器中。
+    session.modified = True
+
     try:
         # 檢查新功能選項
         is_dual_image = request.form.get('dual_image') == 'on'
@@ -424,10 +429,6 @@ def generate_image():
         else:
             # 快取未命中或已過期，執行實際抓取
             print(f"CACHE MISS for URL: {url}")
-            
-            # 關鍵修正：在執行耗時操作前，強制更新 session，確保登入狀態被保存
-            # 這樣即使後續的 scraper 超時，使用者的瀏覽器也已經收到了新的 session cookie
-            session.modified = True
             
             scraper = Scraper(url)
             # 將新的爬取結果存入快取
