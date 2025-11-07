@@ -411,25 +411,24 @@ def generate_image():
         edited_content = request.form.get('edited_content')
         edited_alt_text = request.form.get('edited_alt_text')
 
+        # --- 全新的、更穩定的快取邏輯 ---
+        # 我們將 soup 物件直接存在 session 中，避免因伺服器程序重啟導致快取遺失
+        # 只有在第一次請求或 URL 變更時才執行爬取
+        if 'last_url' not in session or session['last_url'] != url or not session.get('soup_cache'):
+            print(f"SESSION CACHE MISS for URL: {url}")
+            scraper = Scraper(url)
+            # 將 soup 物件轉換為字串存入 session
+            session['soup_cache'] = str(scraper.soup)
+            session['last_url'] = url
+        else:
+            print(f"SESSION CACHE HIT for URL: {url}")
+            # 從 session 中讀取 soup 字串並重新解析
+            from bs4 import BeautifulSoup
+            cached_soup = BeautifulSoup(session['soup_cache'], 'html.parser')
+            scraper = Scraper(url, soup=cached_soup)
+
         dual_image_data = None
         layout_image = None
-        
-        # --- 快取邏輯 ---
-        current_time = time.time()
-        cached_entry = url_cache.get(url)
-        
-        if cached_entry and (current_time - cached_entry['timestamp'] < CACHE_TTL):
-            # 快取命中且未過期
-            print(f"CACHE HIT for URL: {url}")
-            # 修正：無論是首次生成還是重新生成，只要快取命中，就使用它
-            scraper = Scraper(url, soup=cached_entry['soup'])
-            # 關鍵修正：更新時間戳，防止快取因閒置而過期
-            cached_entry['timestamp'] = current_time
-        else:
-            # 快取未命中或已過期，執行實際抓取
-            print(f"CACHE MISS for URL: {url}")
-            scraper = Scraper(url)
-            url_cache[url] = {'soup': scraper.soup, 'timestamp': current_time}
 
         # --- 核心邏輯切換 ---
         if is_dual_image:
