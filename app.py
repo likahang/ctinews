@@ -420,14 +420,11 @@ def generate_image():
         
         if cached_entry and (current_time - cached_entry['timestamp'] < CACHE_TTL):
             # 快取命中且未過期
-            # 如果是重新生成，則不使用快取，以確保能反映編輯後的內容
-            if not (edited_title or edited_content or edited_alt_text):
-                print(f"CACHE HIT for URL: {url}")
-                scraper = Scraper(url, soup=cached_entry['soup'])
-            else:
-                # 修正：重新生成時，也應該從快取中獲取 soup，避免重新爬取
-                print(f"CACHE HIT (with edits) for URL: {url}")
-                scraper = Scraper(url, soup=cached_entry['soup'])
+            print(f"CACHE HIT for URL: {url}")
+            # 修正：無論是首次生成還是重新生成，只要快取命中，就使用它
+            scraper = Scraper(url, soup=cached_entry['soup'])
+            # 關鍵修正：更新時間戳，防止快取因閒置而過期
+            cached_entry['timestamp'] = current_time
         else:
             # 快取未命中或已過期，執行實際抓取
             print(f"CACHE MISS for URL: {url}")
