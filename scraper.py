@@ -323,6 +323,23 @@ class Scraper:
             if not src.startswith(('http://', 'https://')):
                 src = urljoin(self.base_url, src)
             
+            # 額外過濾：排除特定路徑和格式的圖片
+            src_lower = src.lower()
+            # 排除 SVG 圖片
+            if src.startswith('data:image/svg+xml') or src_lower.endswith('.svg'):
+                continue
+            # 排除特定路徑
+            if any(path in src_lower for path in ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']):
+                continue
+            # 排除特定關鍵字
+            if any(keyword in src_lower for keyword in ['buy-ic', 'shop', 'cart', '購物', 'shopping', 'app-icon', 'userapp']):
+                continue
+            # 排除 alt 文字中包含特定關鍵字
+            if alt:
+                alt_lower = alt.lower()
+                if any(keyword in alt_lower for keyword in ['快點購', '購物', 'shop', 'buy', '購買']):
+                    continue
+            
             score = self._calculate_main_image_score(img, src, alt)
             candidates.append({'image_url': src, 'alt_text': self._clean_alt_text(alt), 'score': score})
         
@@ -340,7 +357,29 @@ class Scraper:
             if not src.startswith(('http://', 'https://')):
                 src = urljoin(self.base_url, src)
             
+            # 過濾：排除明顯不是主圖的圖片
+            if not self._is_content_image(src, ''):
+                continue
+            
+            # 額外過濾：排除特定路徑和格式的圖片
+            src_lower = src.lower()
+            # 排除 SVG 圖片
+            if src.startswith('data:image/svg+xml') or src_lower.endswith('.svg'):
+                continue
+            # 排除特定路徑
+            if any(path in src_lower for path in ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']):
+                continue
+            # 排除特定關鍵字
+            if any(keyword in src_lower for keyword in ['buy-ic', 'shop', 'cart', '購物', 'shopping', 'app-icon', 'userapp']):
+                continue
+            
             alt = self._get_image_alt_text(img)
+            # 排除 alt 文字中包含特定關鍵字
+            if alt:
+                alt_lower = alt.lower()
+                if any(keyword in alt_lower for keyword in ['快點購', '購物', 'shop', 'buy', '購買']):
+                    continue
+            
             score = self._calculate_improved_relevance_score(img, src, alt)
             if score > best_score:
                 best_score = score
