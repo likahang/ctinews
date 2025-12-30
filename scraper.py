@@ -431,15 +431,7 @@ class Scraper:
         if src.startswith('data:image/svg+xml') or src.lower().endswith('.svg'):
             return False
         
-        exclude_patterns = [
-            r'logo', r'icon', r'avatar', r'ad[^a-z]', r'banner', r'button', r'arrow', 
-            r'bg[^a-z]', r'background', r'_80x80', r'thumb', r'small', r'mini',
-            r'facebook', r'twitter', r'instagram', r'youtube', r'share', r'social',
-            r'buy', r'shop', r'購物', r'shopping', r'userapp', r'/app/', r'快點購'
-        ]
         src_lower, alt_lower = src.lower(), alt.lower()
-        if any(re.search(p, src_lower) or re.search(p, alt_lower) for p in exclude_patterns):
-            return False
         
         # 排除特定路徑的圖片（應用程式圖標、購物相關等）
         exclude_paths = ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']
@@ -451,16 +443,46 @@ class Scraper:
         if any(keyword in src_lower for keyword in exclude_url_keywords):
             return False
         
-        content_indicators = ['資料照', '圖片來源', '截自', '翻攝', '中天新聞', '記者', '攝影', '.jpg', '.png', '.jpeg', '.webp']
+        # 排除 alt 文字中包含特定關鍵字的圖片（可能是 logo、廣告、購物等）
+        if alt:
+            alt_lower = alt.lower()
+            exclude_alt_keywords = ['logo', 'icon', 'avatar', 'banner', 'ad', '廣告', '贊助', '快點購', '購物', 'shop', 'buy', '購買']
+            if any(keyword in alt_lower for keyword in exclude_alt_keywords):
+                return False
+        
+        # 檢查是否為內容圖片的正面指標
+        content_indicators = [
+            '資料照', '圖片來源', '截自', '翻攝', '中天新聞', '記者', '攝影', 
+            '圖／', '圖 /', '圖:', '圖：',  # 添加圖／相關關鍵字
+            '.jpg', '.png', '.jpeg', '.webp'
+        ]
         if any(indicator in alt or indicator.lower() in src_lower for indicator in content_indicators):
             return True
         
-        if alt and 10 <= len(alt) <= 200: return True
-        # 只有當 storage.ctinews.com 的圖片不在排除路徑中時，才認為是內容圖片
+        # 如果 alt 文字長度合理且包含中文，可能是內容圖片
+        if alt and 10 <= len(alt) <= 200:
+            # 檢查是否包含中文（排除純英文的 logo/icon 描述）
+            if re.search(r'[\u4e00-\u9fff]', alt):
+                return True
+        
+        # 對於 storage.ctinews.com 的圖片，如果不在排除路徑中，認為是內容圖片
         if 'storage.ctinews.com' in src:
-            # 排除 userapp、app 等路徑
             if not any(path in src_lower for path in ['/userapp/', '/app/', '/icon/', '/logo/']):
                 return True
+        
+        # 對於其他域名的圖片，如果 URL 包含常見的圖片格式，且不在排除列表中，也認為可能是內容圖片
+        # 但需要更嚴格的檢查：必須有合理的 alt 文字或明顯的圖片格式
+        if src_lower.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            # 如果有 alt 文字且包含中文，或 alt 文字長度合理
+            if alt and (re.search(r'[\u4e00-\u9fff]', alt) or len(alt) >= 10):
+                return True
+            # 如果沒有 alt 文字，但 URL 看起來像是內容圖片（不包含排除關鍵字）
+            if not alt:
+                # 檢查 URL 是否包含明顯的非內容圖片特徵
+                exclude_in_url = ['logo', 'icon', 'avatar', 'thumb', 'small', 'mini', 'button']
+                if not any(keyword in src_lower for keyword in exclude_in_url):
+                    return True
+        
         return False
 
     def _calculate_main_image_score(self, img, src, alt):
