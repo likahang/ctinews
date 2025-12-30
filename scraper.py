@@ -177,6 +177,25 @@ class Scraper:
             if not self._is_content_image(src, alt):
                 continue
             
+            # 額外過濾：排除明顯不是主圖的圖片
+            # 排除尺寸過小的圖片（可能是圖標）
+            width = img.get('width')
+            height = img.get('height')
+            if width and height:
+                try:
+                    w, h = int(width), int(height)
+                    if w < 200 or h < 150:  # 太小的圖片跳過
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            
+            # 排除 alt 文字中包含特定關鍵字的圖片（可能是 logo、廣告等）
+            if alt:
+                alt_lower = alt.lower()
+                exclude_keywords = ['logo', 'icon', 'avatar', 'banner', 'ad', '廣告', '贊助']
+                if any(keyword in alt_lower for keyword in exclude_keywords):
+                    continue
+            
             # 計算優先級分數
             priority = 0
             img_index = -1
@@ -216,6 +235,54 @@ class Scraper:
                 priority += 20
                 if '/compression/files/' in src:
                     priority += 10
+            
+            # 特別針對中天新聞網：優先選擇在文章正文第一段附近的圖片
+            # 查找第一個段落（p 標籤），主圖通常在標題和第一段之間
+            first_paragraph = content_area.find('p')
+            if first_paragraph:
+                try:
+                    para_index = all_elements.index(first_paragraph)
+                    # 如果圖片在標題和第一段之間，或緊接第一段之後，優先級很高
+                    if title_element:
+                        try:
+                            title_index = all_elements.index(title_element)
+                            if title_index < img_index <= para_index + 20:  # 標題後到第一段後20個元素內
+                                priority += 80
+                        except ValueError:
+                            pass
+                except ValueError:
+                    pass
+            
+            # 優先選擇 alt 文字中包含「圖／」或「資料照」的圖片（中天新聞網的主圖特徵）
+            if alt:
+                if '圖／' in alt or '圖 /' in alt or '資料照' in alt:
+                    priority += 60
+                # 如果 alt 文字較長且包含中文，可能是主圖說明
+                if len(alt) > 20 and re.search(r'[\u4e00-\u9fff]', alt):
+                    priority += 20
+            
+            # 優先選擇尺寸較大的圖片（主圖通常較大）
+            width = img.get('width')
+            height = img.get('height')
+            if width and height:
+                try:
+                    w, h = int(width), int(height)
+                    if w >= 600 and h >= 400:  # 較大的圖片
+                        priority += 30
+                    elif w >= 400 and h >= 300:  # 中等大小的圖片
+                        priority += 15
+                except (ValueError, TypeError):
+                    pass
+            
+            # 檢查圖片是否在特定的容器中（中天新聞網可能使用特定結構）
+            parent = img.find_parent()
+            if parent:
+                parent_classes = parent.get('class', [])
+                if parent_classes:
+                    parent_class_str = ' '.join(parent_classes).lower()
+                    # 如果圖片在文章內容相關的容器中
+                    if any(keyword in parent_class_str for keyword in ['article', 'content', 'post', 'entry', 'main']):
+                        priority += 25
             
             candidates.append({
                 'image_url': src,
