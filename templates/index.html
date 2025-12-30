@@ -15,14 +15,19 @@
             <input type="text" id="url_input" name="url" placeholder="例如: https://ctinews.com/news/items/57nGNjPYxk" required>
             
             <!-- 將兩個勾選框放入同一個 flex 容器中，實現水平排列 -->
-            <div class="options-container" style="display: flex; justify-content: center; gap: 30px; margin-top: 10px; width: 100%;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="show_source" name="show_source">
-                    <label for="show_source" style="margin: 0; font-size: 1em; font-weight: normal;">含資料來源</label>
+            <div class="options-container" style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 10px; width: 100%;">
+                <div style="display: flex; justify-content: center; gap: 30px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="show_source" name="show_source">
+                        <label for="show_source" style="margin: 0; font-size: 1em; font-weight: normal;">含資料來源</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="dual_image" name="dual_image">
+                        <label for="dual_image" style="margin: 0; font-size: 1em; font-weight: normal;">圖片雙框</label>
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="dual_image" name="dual_image">
-                    <label for="dual_image" style="margin: 0; font-size: 1em; font-weight: normal;">圖片雙框</label>
+                <div id="custom_source_input" style="display: none; width: 80%; max-width: 400px;">
+                    <input type="text" id="custom_source_text" name="custom_source_text" placeholder="請輸入自訂資料來源文字" style="width: 100%;">
                 </div>
             </div>
 
@@ -102,6 +107,16 @@
                 dualImageInputs.style.display = 'flex'; // 勾選時顯示
             } else {
                 dualImageInputs.style.display = 'none'; // 取消勾選時隱藏
+            }
+        });
+
+        // 新增：監聽「含資料來源」checkbox 的變化
+        document.getElementById('show_source').addEventListener('change', function() {
+            const customSourceInput = document.getElementById('custom_source_input');
+            if (this.checked) {
+                customSourceInput.style.display = 'block'; // 勾選時顯示
+            } else {
+                customSourceInput.style.display = 'none'; // 取消勾選時隱藏
             }
         });
 

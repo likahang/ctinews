@@ -57,7 +57,7 @@ def wrap_text(text, font, max_width):
     
     return lines
 
-def create_layout_image(data, show_source=True, dual_image_data=None):
+def create_layout_image(data, show_source=True, dual_image_data=None, custom_source_text=None):
     """創建自動排版圖片"""
     
     # 從設定檔讀取參數
@@ -254,8 +254,8 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
     
         # <<<< 修正：只有勾選「含資料來源」時才繪製文字 >>>>
         if show_source:
-            # 優先使用第一張圖的 alt_text，如果不存在則使用 "圖X跟圖X" 作為備用
-            source_text = dual_image_data.get('alt_text')
+            # 優先使用自訂文字，否則走原本的邏輯
+            source_text = custom_source_text if custom_source_text else dual_image_data.get('alt_text')
             if not source_text or source_text in ['無替代文字', '未找到圖片或無替代文字']:
                 source_text = f"圖{img1_idx}跟圖{img2_idx}"
             
@@ -304,31 +304,34 @@ def create_layout_image(data, show_source=True, dual_image_data=None):
                 
                 background.paste(resized_image, (paste_x, paste_y))
                 
-                alt_text = data.get('alt_text', '')
-                # 只有當「顯示資料來源」被勾選，且有實際的 alt_text 時才繪製
-                if show_source and alt_text and alt_text != '未找到圖片或無替代文字':
-                    try:
-                        # 假設來源字體也放在 'static' 資料夾
-                        source_font_path = os.path.join(APP_ROOT, 'static', image_cfg['source_text_font_path'])
-                        alt_font = ImageFont.truetype(source_font_path, image_cfg['source_text_font_size'])
-                    except (OSError, IOError, ValueError) as e:
-                        print(f"警告：無法載入指定的來源字體 {source_font_path}，將使用預設字體。錯誤：{e}")
-                        alt_font = get_font(image_cfg['source_text_font_size']) # 使用預設的 get_font
+                # 只有當「顯示資料來源」被勾選時才處理來源文字
+                if show_source:
+                    # 優先使用自訂文字，否則使用 alt_text
+                    alt_text = custom_source_text if custom_source_text else data.get('alt_text', '')
                     
-                    bbox = alt_font.getbbox(alt_text)
-                    text_width = bbox[2] - bbox[0]
-                    text_height = bbox[3] - bbox[1]
-                    
-                    alt_x = start_x + white_area_width - text_width - image_cfg['source_text_horizontal_margin']
-                    alt_y = current_y + image_height - text_height - image_cfg['source_text_vertical_margin']
-                    
-                    stroke_width = image_cfg['source_text_stroke_width']
-                    for x_offset in range(-stroke_width, stroke_width + 1):
-                        for y_offset in range(-stroke_width, stroke_width + 1):
-                            if x_offset != 0 or y_offset != 0: 
-                                draw.text((alt_x + x_offset, alt_y + y_offset), alt_text, font=alt_font, fill='black')
+                    if alt_text and alt_text != '未找到圖片或無替代文字':
+                        try:
+                            # 假設來源字體也放在 'static' 資料夾
+                            source_font_path = os.path.join(APP_ROOT, 'static', image_cfg['source_text_font_path'])
+                            alt_font = ImageFont.truetype(source_font_path, image_cfg['source_text_font_size'])
+                        except (OSError, IOError, ValueError) as e:
+                            print(f"警告：無法載入指定的來源字體 {source_font_path}，將使用預設字體。錯誤：{e}")
+                            alt_font = get_font(image_cfg['source_text_font_size']) # 使用預設的 get_font
+                        
+                        bbox = alt_font.getbbox(alt_text)
+                        text_width = bbox[2] - bbox[0]
+                        text_height = bbox[3] - bbox[1]
+                        
+                        alt_x = start_x + white_area_width - text_width - image_cfg['source_text_horizontal_margin']
+                        alt_y = current_y + image_height - text_height - image_cfg['source_text_vertical_margin']
+                        
+                        stroke_width = image_cfg['source_text_stroke_width']
+                        for x_offset in range(-stroke_width, stroke_width + 1):
+                            for y_offset in range(-stroke_width, stroke_width + 1):
+                                if x_offset != 0 or y_offset != 0: 
+                                    draw.text((alt_x + x_offset, alt_y + y_offset), alt_text, font=alt_font, fill='black')
 
-                    draw.text((alt_x, alt_y), alt_text, font=alt_font, fill='white')
+                        draw.text((alt_x, alt_y), alt_text, font=alt_font, fill='white')
             else: # 圖片下載失敗
                 error_font = get_font(32)
                 error_text = "圖片載入失敗"
@@ -426,6 +429,7 @@ def generate_image():
         # 檢查新功能選項
         is_dual_image = request.form.get('dual_image') == 'on'
         show_source = request.form.get('show_source') == 'on'
+        custom_source_text = request.form.get('custom_source_text')
         
         # 檢查是否有編輯過的文字傳入
         edited_title = request.form.get('edited_title')
@@ -485,7 +489,7 @@ def generate_image():
             }
             # 將 dual_image_data 同時指派給 result，以供後續程式碼使用
             result = dual_image_data
-            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data)
+            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data, custom_source_text=custom_source_text)
 
         else:
             # 原本的單張圖片模式
@@ -502,7 +506,7 @@ def generate_image():
             else:
                 # 第一次生成
                 result = scraper.get_content()
-            layout_image = create_layout_image(result, show_source=show_source)
+            layout_image = create_layout_image(result, show_source=show_source, custom_source_text=custom_source_text)
 
         if 'error' in result:
             return render_template('index.html', error=result['error'])
