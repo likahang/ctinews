@@ -60,6 +60,11 @@
                     {% endif %}
                     <input type="hidden" name="image_index_1" value="{{ request.form.image_index_1 }}">
                     <input type="hidden" name="image_index_2" value="{{ request.form.image_index_2 }}">
+                    {% if custom_source_text %}
+                        <input type="hidden" name="custom_source_text" value="{{ custom_source_text }}">
+                    {% elif request.form.get('custom_source_text') %}
+                        <input type="hidden" name="custom_source_text" value="{{ request.form.get('custom_source_text') }}">
+                    {% endif %}
 
                     <h2>生成結果:</h2>
                     

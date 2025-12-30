@@ -436,6 +436,11 @@ def generate_image():
         edited_content = request.form.get('edited_content')
         edited_alt_text = request.form.get('edited_alt_text')
         edited_image_url = request.form.get('edited_image_url')
+        
+        # 如果用戶編輯了 alt_text 但沒有提供 custom_source_text，將編輯後的 alt_text 視為 custom_source_text
+        # 這樣可以確保圖片上顯示的文字和欄位中的文字一致
+        if edited_alt_text and not (custom_source_text and custom_source_text.strip()):
+            custom_source_text = edited_alt_text
 
         # --- 最終、最穩定的快取與 Session 邏輯 ---
         current_time = time.time()
@@ -525,7 +530,8 @@ def generate_image():
         image_data_uri = "data:image/png;base64," + base64.b64encode(img_byte_arr.read()).decode('ascii')
 
         # 如果有自訂來源文字，則使用它作為 alt_text，確保與圖片上顯示的文字一致
-        display_alt_text = custom_source_text if custom_source_text else result['alt_text']
+        # 注意：custom_source_text 可能是空字串，需要檢查是否為真值
+        display_alt_text = custom_source_text if (custom_source_text and custom_source_text.strip()) else result['alt_text']
 
         return render_template(
             'index.html',
@@ -533,7 +539,8 @@ def generate_image():
             title=result['title'],
             content_snippet=result['content'],
             alt_text=display_alt_text,
-            image_url=result.get('image_url', '') # 將 image_url 傳遞給模板
+            image_url=result.get('image_url', ''), # 將 image_url 傳遞給模板
+            custom_source_text=custom_source_text if (custom_source_text and custom_source_text.strip()) else '' # 將 custom_source_text 傳遞給模板，以便重新生成時使用
         )
         
     except Exception as e:
