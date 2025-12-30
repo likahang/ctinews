@@ -178,6 +178,10 @@ class Scraper:
                 continue
             
             # 額外過濾：排除明顯不是主圖的圖片
+            # 排除 SVG 格式的圖片（通常是圖標或裝飾，不是主圖）
+            if src.startswith('data:image/svg+xml') or src.lower().endswith('.svg'):
+                continue
+            
             # 排除特定 URL 路徑的圖片（應用程式圖標、購物相關等）
             src_lower = src.lower()
             exclude_paths = ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']
@@ -384,6 +388,10 @@ class Scraper:
     @staticmethod
     def _is_content_image(src, alt):
         """判斷是否為內容圖片"""
+        # 排除 SVG 格式的圖片（通常是圖標或裝飾，不是主圖）
+        if src.startswith('data:image/svg+xml') or src.lower().endswith('.svg'):
+            return False
+        
         exclude_patterns = [
             r'logo', r'icon', r'avatar', r'ad[^a-z]', r'banner', r'button', r'arrow', 
             r'bg[^a-z]', r'background', r'_80x80', r'thumb', r'small', r'mini',
