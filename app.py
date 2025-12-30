@@ -524,12 +524,15 @@ def generate_image():
         img_byte_arr.seek(0)
         image_data_uri = "data:image/png;base64," + base64.b64encode(img_byte_arr.read()).decode('ascii')
 
+        # 如果有自訂來源文字，則使用它作為 alt_text，確保與圖片上顯示的文字一致
+        display_alt_text = custom_source_text if custom_source_text else result['alt_text']
+
         return render_template(
             'index.html',
             image_data_uri=image_data_uri,
             title=result['title'],
             content_snippet=result['content'],
-            alt_text=result['alt_text'],
+            alt_text=display_alt_text,
             image_url=result.get('image_url', '') # 將 image_url 傳遞給模板
         )
         
