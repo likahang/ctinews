@@ -178,6 +178,17 @@ class Scraper:
                 continue
             
             # 額外過濾：排除明顯不是主圖的圖片
+            # 排除特定 URL 路徑的圖片（應用程式圖標、購物相關等）
+            src_lower = src.lower()
+            exclude_paths = ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']
+            if any(path in src_lower for path in exclude_paths):
+                continue
+            
+            # 排除 URL 中包含特定關鍵字的圖片
+            exclude_url_keywords = ['buy-ic', 'shop', 'cart', '購物', 'shopping', 'app-icon', 'userapp']
+            if any(keyword in src_lower for keyword in exclude_url_keywords):
+                continue
+            
             # 排除尺寸過小的圖片（可能是圖標）
             width = img.get('width')
             height = img.get('height')
@@ -189,10 +200,10 @@ class Scraper:
                 except (ValueError, TypeError):
                     pass
             
-            # 排除 alt 文字中包含特定關鍵字的圖片（可能是 logo、廣告等）
+            # 排除 alt 文字中包含特定關鍵字的圖片（可能是 logo、廣告、購物等）
             if alt:
                 alt_lower = alt.lower()
-                exclude_keywords = ['logo', 'icon', 'avatar', 'banner', 'ad', '廣告', '贊助']
+                exclude_keywords = ['logo', 'icon', 'avatar', 'banner', 'ad', '廣告', '贊助', '快點購', '購物', 'shop', 'buy', '購買']
                 if any(keyword in alt_lower for keyword in exclude_keywords):
                     continue
             
@@ -376,10 +387,21 @@ class Scraper:
         exclude_patterns = [
             r'logo', r'icon', r'avatar', r'ad[^a-z]', r'banner', r'button', r'arrow', 
             r'bg[^a-z]', r'background', r'_80x80', r'thumb', r'small', r'mini',
-            r'facebook', r'twitter', r'instagram', r'youtube', r'share', r'social'
+            r'facebook', r'twitter', r'instagram', r'youtube', r'share', r'social',
+            r'buy', r'shop', r'購物', r'shopping', r'userapp', r'/app/', r'快點購'
         ]
         src_lower, alt_lower = src.lower(), alt.lower()
         if any(re.search(p, src_lower) or re.search(p, alt_lower) for p in exclude_patterns):
+            return False
+        
+        # 排除特定路徑的圖片（應用程式圖標、購物相關等）
+        exclude_paths = ['/userapp/', '/app/', '/icon/', '/logo/', '/buy', '/shop', '/購物', '/shopping']
+        if any(path in src_lower for path in exclude_paths):
+            return False
+        
+        # 排除 URL 中包含特定關鍵字的圖片
+        exclude_url_keywords = ['buy-ic', 'shop', 'cart', '購物', 'shopping', 'app-icon', 'userapp', '快點購']
+        if any(keyword in src_lower for keyword in exclude_url_keywords):
             return False
         
         content_indicators = ['資料照', '圖片來源', '截自', '翻攝', '中天新聞', '記者', '攝影', '.jpg', '.png', '.jpeg', '.webp']
@@ -387,7 +409,11 @@ class Scraper:
             return True
         
         if alt and 10 <= len(alt) <= 200: return True
-        if 'storage.ctinews.com' in src: return True
+        # 只有當 storage.ctinews.com 的圖片不在排除路徑中時，才認為是內容圖片
+        if 'storage.ctinews.com' in src:
+            # 排除 userapp、app 等路徑
+            if not any(path in src_lower for path in ['/userapp/', '/app/', '/icon/', '/logo/']):
+                return True
         return False
 
     def _calculate_main_image_score(self, img, src, alt):
