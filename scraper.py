@@ -144,7 +144,7 @@ class Scraper:
     # --- Helper Methods (Private) ---
 
     def _find_first_content_image(self):
-        """方法1：找到文章內容區域的第一張有意義圖片"""
+        """方法1：找到文章內容區域的第一張有意義圖片，優先選擇標題附近或文章開頭的圖片"""
         content_selectors = [
             'article', '.article-content', '.content', '.post-content',
             '.entry-content', '[class*="content"]', 'main'
@@ -156,6 +156,17 @@ class Scraper:
                 content_area = area
                 break
         
+        # 找到標題元素（h1 或標題相關的元素）
+        title_element = None
+        for tag in ['h1', 'h2', '.title', '[class*="title"]', '[class*="headline"]']:
+            title_element = content_area.select_one(tag)
+            if title_element:
+                break
+        
+        # 收集所有候選圖片，並根據位置和特徵排序
+        candidates = []
+        all_elements = list(content_area.descendants)
+        
         for img in content_area.find_all('img'):
             src = self._get_image_src(img)
             if not src: continue
@@ -163,8 +174,61 @@ class Scraper:
                 src = urljoin(self.base_url, src)
             
             alt = self._get_image_alt_text(img)
-            if self._is_content_image(src, alt):
-                return {'image_url': src, 'alt_text': self._clean_alt_text(alt)}
+            if not self._is_content_image(src, alt):
+                continue
+            
+            # 計算優先級分數
+            priority = 0
+            img_index = -1
+            
+            # 獲取圖片在內容區域中的位置索引
+            try:
+                img_index = all_elements.index(img)
+            except ValueError:
+                pass
+            
+            # 優先選擇在標題附近的圖片
+            if title_element:
+                try:
+                    title_index = all_elements.index(title_element)
+                    if img_index > title_index and img_index - title_index < 50:  # 標題後50個元素內
+                        priority += 100 - (img_index - title_index)  # 越近分數越高
+                except ValueError:
+                    pass
+            
+            # 優先選擇在文章開頭區域的圖片（前100個元素內）
+            if img_index >= 0 and img_index < 100:
+                priority += 50 - (img_index // 2)  # 越靠前分數越高
+            
+            # 優先選擇在 figure 標籤中的圖片
+            if img.find_parent('figure'):
+                priority += 30
+            
+            # 優先選擇有特定 class 或 data 屬性的圖片（可能是主圖標記）
+            img_classes = img.get('class', [])
+            if img_classes:
+                class_str = ' '.join(img_classes).lower()
+                if any(keyword in class_str for keyword in ['main', 'featured', 'hero', 'article', 'cover', 'headline']):
+                    priority += 40
+            
+            # 優先選擇 storage.ctinews.com 的圖片
+            if 'storage.ctinews.com' in src:
+                priority += 20
+                if '/compression/files/' in src:
+                    priority += 10
+            
+            candidates.append({
+                'image_url': src,
+                'alt_text': self._clean_alt_text(alt),
+                'priority': priority,
+                'position': img_index
+            })
+        
+        # 按優先級排序，優先級相同時按位置排序（越靠前越好）
+        if candidates:
+            candidates.sort(key=lambda x: (-x['priority'], x['position'] if x['position'] >= 0 else 999999))
+            return {'image_url': candidates[0]['image_url'], 'alt_text': candidates[0]['alt_text']}
+        
         return None
 
     def _find_by_image_characteristics(self):
