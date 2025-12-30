@@ -435,6 +435,7 @@ def generate_image():
         edited_title = request.form.get('edited_title')
         edited_content = request.form.get('edited_content')
         edited_alt_text = request.form.get('edited_alt_text')
+        edited_image_url = request.form.get('edited_image_url')
 
         # --- 最終、最穩定的快取與 Session 邏輯 ---
         current_time = time.time()
@@ -493,13 +494,16 @@ def generate_image():
 
         else:
             # 原本的單張圖片模式
-            if edited_title is not None or edited_content is not None or edited_alt_text is not None:
+            # 檢查是否有任何編輯過的欄位
+            is_editing = any(v is not None for v in [edited_title, edited_content, edited_alt_text, edited_image_url])
+            
+            if is_editing:
                 # 如果是重新生成，使用編輯過的文字
-                original_data = scraper.get_content() # 仍然需要圖片URL
+                original_data = scraper.get_content() # 仍然需要原始資料作為後備
                 result = {
                     'title': edited_title if edited_title is not None else original_data['title'],
                     'content': edited_content if edited_content is not None else original_data['content'],
-                    'image_url': original_data['image_url'],
+                    'image_url': edited_image_url if edited_image_url is not None else original_data['image_url'],
                     'alt_text': edited_alt_text if edited_alt_text is not None else original_data['alt_text'],
                     'url': url # 將當前 url 傳遞給繪圖函式以利快取
                 }
@@ -525,7 +529,8 @@ def generate_image():
             image_data_uri=image_data_uri,
             title=result['title'],
             content_snippet=result['content'],
-            alt_text=result['alt_text']
+            alt_text=result['alt_text'],
+            image_url=result.get('image_url', '') # 將 image_url 傳遞給模板
         )
         
     except Exception as e:
