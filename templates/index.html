@@ -149,6 +149,20 @@
                 const fieldDiv = this.closest('.editable-field');
                 fieldDiv.querySelector('.editable-input').readOnly = true; // 鎖定輸入框即可，無需切換元素
 
+                // 若使用者編輯的是「圖片來源描述」，同步更新 hidden custom_source_text
+                const form = document.getElementById('regenerateForm');
+                const editedAltInput = form ? form.querySelector('input[name="edited_alt_text"]') : null;
+                if (form && editedAltInput) {
+                    let customSourceHidden = form.querySelector('input[name="custom_source_text"]');
+                    if (!customSourceHidden) {
+                        customSourceHidden = document.createElement('input');
+                        customSourceHidden.type = 'hidden';
+                        customSourceHidden.name = 'custom_source_text';
+                        form.appendChild(customSourceHidden);
+                    }
+                    customSourceHidden.value = editedAltInput.value;
+                }
+
                 // 觸發重新生成
                 document.getElementById('loading').style.display = 'block';
                 document.querySelector('button[type="submit"]').disabled = true;

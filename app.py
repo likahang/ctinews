@@ -437,9 +437,9 @@ def generate_image():
         edited_alt_text = request.form.get('edited_alt_text')
         edited_image_url = request.form.get('edited_image_url')
         
-        # 如果用戶編輯了 alt_text 但沒有提供 custom_source_text，將編輯後的 alt_text 視為 custom_source_text
-        # 這樣可以確保圖片上顯示的文字和欄位中的文字一致
-        if edited_alt_text and not (custom_source_text and custom_source_text.strip()):
+        # 重新生成時，優先使用「圖片來源描述」欄位目前的值，
+        # 避免舊的 hidden custom_source_text 蓋掉剛編輯的文字。
+        if edited_alt_text is not None:
             custom_source_text = edited_alt_text
 
         # --- 最終、最穩定的快取與 Session 邏輯 ---
