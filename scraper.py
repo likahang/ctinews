@@ -86,6 +86,10 @@ class Scraper:
 
     def extract_main_article_image(self):
         """提取文章主要配圖"""
+        content_images = self.get_all_content_images()
+        if content_images:
+            return content_images[0]
+
         main_image = self._find_first_content_image()
         if main_image: return main_image
         
