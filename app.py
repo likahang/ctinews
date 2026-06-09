@@ -57,7 +57,82 @@ def wrap_text(text, font, max_width):
     
     return lines
 
-def create_layout_image(data, show_source=True, dual_image_data=None, custom_source_text=None):
+def parse_image_scale(value, default=1.0):
+    try:
+        scale = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.1, min(scale, 3.0))
+
+def parse_image_offset(value, default=0.0):
+    try:
+        offset = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(-1.0, min(offset, 1.0))
+
+def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, offset_y=0.0):
+    base_scale = max(mask_width / image.width, mask_height / image.height)
+    resized_width = max(1, int(image.width * base_scale * scale_x))
+    resized_height = max(1, int(image.height * base_scale * scale_y))
+    resized = image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
+
+    canvas = Image.new('RGB', (mask_width, mask_height), color='white')
+    crop_left = max(0, (resized_width - mask_width) // 2)
+    crop_top = int((resized_height - mask_height) // 2 - (offset_y * mask_height))
+    crop_top = max(0, min(crop_top, max(0, resized_height - mask_height)))
+    crop_right = min(resized_width, crop_left + mask_width)
+    crop_bottom = min(resized_height, crop_top + mask_height)
+    cropped = resized.crop((crop_left, crop_top, crop_right, crop_bottom))
+
+    paste_x = max(0, (mask_width - cropped.width) // 2)
+    paste_y = int((mask_height - cropped.height) // 2 + (offset_y * mask_height))
+    paste_y = max(0, min(paste_y, max(0, mask_height - cropped.height)))
+    if cropped.mode == 'RGBA':
+        canvas.paste(cropped, (paste_x, paste_y), cropped)
+    else:
+        canvas.paste(cropped.convert('RGB'), (paste_x, paste_y))
+    return canvas
+
+def calculate_image_mask_rect(data):
+    cfg = LAYOUT_CONFIG
+    start_x = cfg['layout']['white_area_left']
+    current_y = cfg['layout']['white_area_top']
+    white_area_width = cfg['layout']['white_area_width']
+    white_area_height = cfg['layout']['white_area_height']
+    header_height = cfg['layout']['header_height']
+    title_cfg = cfg['title']
+    content_cfg = cfg['content']
+    image_cfg = cfg['image']
+
+    title_font = get_font(title_cfg['base_font_size'], bold=False)
+    title_text = data.get('title', '')
+    title_lines = wrap_text(title_text, title_font, white_area_width - title_cfg['horizontal_padding'])
+    current_y += header_height
+
+    content_font = get_font(content_cfg['font_size'])
+    content_text = data.get('content', '')
+    content_lines = wrap_text(content_text, content_font, white_area_width - title_cfg['horizontal_padding'])
+    content_actual_height = content_cfg['top_padding'] + (len(content_lines) * content_cfg['line_height']) + content_cfg['bottom_padding']
+    current_y += content_actual_height + cfg['layout']['content_image_gap']
+
+    image_height = max(image_cfg['min_height'], cfg['layout']['white_area_top'] + white_area_height - current_y)
+    if image_height < image_cfg['min_height_for_full_content']:
+        max_content_lines = min(len(content_lines), content_cfg['max_lines_when_cramped'])
+        content_actual_height = content_cfg['top_padding'] + (max_content_lines * content_cfg['line_height']) + content_cfg['bottom_padding']
+        current_y = cfg['layout']['white_area_top'] + header_height + content_actual_height + cfg['layout']['content_image_gap']
+        image_height = cfg['layout']['white_area_top'] + white_area_height - current_y
+
+    return {
+        'x': start_x,
+        'y': current_y,
+        'width': white_area_width,
+        'height': image_height,
+        'layout_width': cfg['layout']['width'],
+        'layout_height': cfg['layout']['height'],
+    }
+
+def create_layout_image(data, show_source=True, dual_image_data=None, custom_source_text=None, image_scale_x=1.0, image_scale_y=1.0, image_offset_y=0.0):
     """創建自動排版圖片"""
     
     # 從設定檔讀取參數
@@ -238,7 +313,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
     
         # 貼上第一張圖
         if img1:
-            img1_resized = img1.resize((img_width, img_height), Image.Resampling.LANCZOS)
+            img1_resized = fit_image_to_mask(img1, img_width, img_height, image_scale_x, image_scale_y, image_offset_y)
             background.paste(img1_resized, (start_x, current_y))
         else:
             draw.rectangle([start_x, current_y, start_x + img_width, current_y + img_height], fill='grey')
@@ -246,7 +321,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
     
         # 貼上第二張圖
         if img2:
-            img2_resized = img2.resize((img_width, img_height), Image.Resampling.LANCZOS)
+            img2_resized = fit_image_to_mask(img2, img_width, img_height, image_scale_x, image_scale_y, image_offset_y)
             background.paste(img2_resized, (start_x + img_width + gap, current_y))
         else:
             draw.rectangle([start_x + img_width + gap, current_y, start_x + white_area_width, current_y + img_height], fill='grey')
@@ -297,7 +372,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
                 target_width = white_area_width
                 target_height = image_height
                 
-                resized_image = downloaded_image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                resized_image = fit_image_to_mask(downloaded_image, target_width, target_height, image_scale_x, image_scale_y, image_offset_y)
                 
                 paste_x = start_x
                 paste_y = current_y
@@ -430,6 +505,9 @@ def generate_image():
         is_dual_image = request.form.get('dual_image') == 'on'
         show_source = request.form.get('show_source') == 'on'
         custom_source_text = request.form.get('custom_source_text')
+        image_scale_x = parse_image_scale(request.form.get('image_scale_x'), 1.0)
+        image_scale_y = parse_image_scale(request.form.get('image_scale_y'), 1.0)
+        image_offset_y = parse_image_offset(request.form.get('image_offset_y'), 0.0)
         
         # 檢查是否有編輯過的文字傳入
         edited_title = request.form.get('edited_title')
@@ -495,7 +573,7 @@ def generate_image():
             }
             # 將 dual_image_data 同時指派給 result，以供後續程式碼使用
             result = dual_image_data
-            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data, custom_source_text=custom_source_text)
+            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data, custom_source_text=custom_source_text, image_scale_x=image_scale_x, image_scale_y=image_scale_y, image_offset_y=image_offset_y)
 
         else:
             # 原本的單張圖片模式
@@ -515,7 +593,7 @@ def generate_image():
             else:
                 # 第一次生成
                 result = scraper.get_content()
-            layout_image = create_layout_image(result, show_source=show_source, custom_source_text=custom_source_text)
+            layout_image = create_layout_image(result, show_source=show_source, custom_source_text=custom_source_text, image_scale_x=image_scale_x, image_scale_y=image_scale_y, image_offset_y=image_offset_y)
 
         if 'error' in result:
             return render_template('index.html', error=result['error'])
@@ -532,6 +610,7 @@ def generate_image():
         # 如果有自訂來源文字，則使用它作為 alt_text，確保與圖片上顯示的文字一致
         # 注意：custom_source_text 可能是空字串，需要檢查是否為真值
         display_alt_text = custom_source_text if (custom_source_text and custom_source_text.strip()) else result['alt_text']
+        image_mask_rect = calculate_image_mask_rect(result)
 
         return render_template(
             'index.html',
@@ -540,6 +619,13 @@ def generate_image():
             content_snippet=result['content'],
             alt_text=display_alt_text,
             image_url=result.get('image_url', ''), # 將 image_url 傳遞給模板
+            image_scale_x=image_scale_x,
+            image_scale_y=image_scale_y,
+            image_offset_y=image_offset_y,
+            image_scale_x_pct=int(round(image_scale_x * 100)),
+            image_scale_y_pct=int(round(image_scale_y * 100)),
+            image_offset_y_pct=int(round(image_offset_y * 100)),
+            image_mask_rect=image_mask_rect,
             custom_source_text=custom_source_text if (custom_source_text and custom_source_text.strip()) else '' # 將 custom_source_text 傳遞給模板，以便重新生成時使用
         )
         

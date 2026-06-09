@@ -66,6 +66,10 @@
                         <input type="hidden" name="custom_source_text" value="{{ request.form.get('custom_source_text') }}">
                     {% endif %}
 
+                    <input type="hidden" id="image_scale_x" name="image_scale_x" value="{{ image_scale_x|default(1.0) }}">
+                    <input type="hidden" id="image_scale_y" name="image_scale_y" value="{{ image_scale_y|default(1.0) }}">
+                    <input type="hidden" id="image_offset_y" name="image_offset_y" value="{{ image_offset_y|default(0.0) }}">
+
                     <h2>生成結果:</h2>
                     
                     <div class="editable-field">
@@ -96,7 +100,37 @@
                         <input type="text" class="editable-input" name="edited_alt_text" value="{{ alt_text }}" readonly>
                     </div>
 
-                    <img src="{{ image_data_uri }}" alt="生成的排版圖片">
+                    <div class="generated-preview" id="generatedPreview"
+                         data-mask-x="{{ image_mask_rect.x }}"
+                         data-mask-y="{{ image_mask_rect.y }}"
+                         data-mask-width="{{ image_mask_rect.width }}"
+                         data-mask-height="{{ image_mask_rect.height }}"
+                         data-layout-width="{{ image_mask_rect.layout_width }}"
+                         data-layout-height="{{ image_mask_rect.layout_height }}"
+                         data-scale-x="{{ image_scale_x|default(1.0) }}"
+                         data-scale-y="{{ image_scale_y|default(1.0) }}"
+                         data-offset-y="{{ image_offset_y|default(0.0) }}"
+                         data-image-url="{{ image_url }}">
+                        <img id="resultImage" src="{{ image_data_uri }}" alt="生成的排版圖片">
+                        {% if image_url %}
+                            <div class="photo-transform-mask" id="photoTransformMask">
+                                <img id="photoTransformImage" src="{{ image_url }}" alt="">
+                                {% if request.form.get('show_source') == 'on' and alt_text %}
+                                    <div class="transform-source-label">{{ alt_text }}</div>
+                                {% endif %}
+                                <div class="transform-box" id="transformBox">
+                                    <span class="transform-handle handle-nw" data-handle="nw"></span>
+                                    <span class="transform-handle handle-n" data-handle="n"></span>
+                                    <span class="transform-handle handle-ne" data-handle="ne"></span>
+                                    <span class="transform-handle handle-e" data-handle="e"></span>
+                                    <span class="transform-handle handle-se" data-handle="se"></span>
+                                    <span class="transform-handle handle-s" data-handle="s"></span>
+                                    <span class="transform-handle handle-sw" data-handle="sw"></span>
+                                    <span class="transform-handle handle-w" data-handle="w"></span>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
                     <br>
                     <a id="downloadLink" href="{{ image_data_uri }}" download="中天新聞網.png">下載圖片</a>
                 </form>
@@ -111,6 +145,241 @@
             document.getElementById('loading').style.display = 'block';
             document.querySelector('button[type="submit"]').disabled = true; // 提交時禁用按鈕
         });
+
+        const regenerateForm = document.getElementById('regenerateForm');
+        if (regenerateForm) {
+            regenerateForm.addEventListener('submit', function() {
+                document.getElementById('loading').style.display = 'block';
+            });
+        }
+
+        function clampScale(value) {
+            return Math.max(0.1, Math.min(3.0, value));
+        }
+
+        function setScaleValue(inputId, value) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.value = clampScale(value).toFixed(2);
+        }
+
+        function clampOffset(value) {
+            return Math.max(-1, Math.min(1, value));
+        }
+
+        function setOffsetY(value) {
+            const input = document.getElementById('image_offset_y');
+            if (!input) return;
+            const nextValue = clampOffset(value);
+            input.value = nextValue.toFixed(3);
+        }
+
+        function updateTransformPreview() {
+            const preview = document.getElementById('generatedPreview');
+            const mask = document.getElementById('photoTransformMask');
+            const photo = document.getElementById('photoTransformImage');
+            const box = document.getElementById('transformBox');
+            const scaleXInput = document.getElementById('image_scale_x');
+            const scaleYInput = document.getElementById('image_scale_y');
+            const offsetYInput = document.getElementById('image_offset_y');
+            if (!preview || !mask || !photo || !box || !scaleXInput || !scaleYInput || !offsetYInput || !photo.naturalWidth || !photo.naturalHeight) return;
+
+            const layoutWidth = Number(preview.dataset.layoutWidth);
+            const layoutHeight = Number(preview.dataset.layoutHeight);
+            const maskX = Number(preview.dataset.maskX);
+            const maskY = Number(preview.dataset.maskY);
+            const maskWidth = Number(preview.dataset.maskWidth);
+            const maskHeight = Number(preview.dataset.maskHeight);
+            const previewWidth = preview.clientWidth;
+            const previewHeight = previewWidth * layoutHeight / layoutWidth;
+            const px = previewWidth / layoutWidth;
+            const py = previewHeight / layoutHeight;
+
+            mask.style.left = `${maskX * px}px`;
+            mask.style.top = `${maskY * py}px`;
+            mask.style.width = `${maskWidth * px}px`;
+            mask.style.height = `${maskHeight * py}px`;
+
+            const scaleX = Number(scaleXInput.value);
+            const scaleY = Number(scaleYInput.value);
+            const offsetY = Number(offsetYInput.value);
+            const baseScale = Math.max(maskWidth / photo.naturalWidth, maskHeight / photo.naturalHeight);
+            const photoWidth = photo.naturalWidth * baseScale * scaleX * px;
+            const photoHeight = photo.naturalHeight * baseScale * scaleY * py;
+            const left = ((maskWidth * px) - photoWidth) / 2;
+            const top = ((maskHeight * py) - photoHeight) / 2 + (offsetY * maskHeight * py);
+
+            photo.style.width = `${photoWidth}px`;
+            photo.style.height = `${photoHeight}px`;
+            photo.style.left = `${left}px`;
+            photo.style.top = `${top}px`;
+            box.style.left = `${left}px`;
+            box.style.top = `${top}px`;
+            box.style.width = `${photoWidth}px`;
+            box.style.height = `${photoHeight}px`;
+
+            const sourceLabel = document.querySelector('.transform-source-label');
+            if (sourceLabel) {
+                const stroke = Math.max(1, 3 * px);
+                sourceLabel.style.right = `${30 * px}px`;
+                sourceLabel.style.bottom = `${60 * py}px`;
+                sourceLabel.style.fontSize = `${36 * px}px`;
+                sourceLabel.style.textShadow = [
+                    `${-stroke}px ${-stroke}px 0 #000`,
+                    `${stroke}px ${-stroke}px 0 #000`,
+                    `${-stroke}px ${stroke}px 0 #000`,
+                    `${stroke}px ${stroke}px 0 #000`,
+                    `0 0 ${stroke}px #000`
+                ].join(', ');
+            }
+        }
+
+        let imageTransformSubmitting = false;
+
+        function refreshGeneratedImage() {
+            if (!regenerateForm || imageTransformSubmitting) return;
+            imageTransformSubmitting = true;
+            fetch(regenerateForm.action, {
+                method: 'POST',
+                body: new FormData(regenerateForm),
+                credentials: 'same-origin'
+            })
+            .then(response => response.text())
+            .then(html => {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextImage = doc.querySelector('#resultImage');
+                const currentImage = document.getElementById('resultImage');
+                const downloadLink = document.getElementById('downloadLink');
+                const nextDownloadLink = doc.querySelector('#downloadLink');
+                if (nextImage && currentImage) {
+                    currentImage.src = nextImage.src;
+                }
+                if (downloadLink && nextDownloadLink) {
+                    downloadLink.href = nextDownloadLink.href;
+                }
+            })
+            .finally(() => {
+                imageTransformSubmitting = false;
+            });
+        }
+
+        setOffsetY(Number(document.getElementById('image_offset_y')?.value || 0));
+
+        const photoTransformImage = document.getElementById('photoTransformImage');
+        if (photoTransformImage) {
+            photoTransformImage.addEventListener('load', updateTransformPreview);
+        }
+        window.addEventListener('resize', updateTransformPreview);
+        updateTransformPreview();
+
+        const transformBox = document.getElementById('transformBox');
+        const photoTransformMask = document.getElementById('photoTransformMask');
+
+        function showTransformControls() {
+            if (transformBox) transformBox.classList.add('is-visible');
+        }
+
+        function hideTransformControls() {
+            if (transformBox) transformBox.classList.remove('is-visible');
+        }
+
+        if (photoTransformMask) {
+            photoTransformMask.addEventListener('pointerdown', function() {
+                showTransformControls();
+            });
+        }
+
+        document.addEventListener('pointerdown', function(event) {
+            if (!photoTransformMask || !transformBox) return;
+            if (!photoTransformMask.contains(event.target)) {
+                hideTransformControls();
+            }
+        });
+
+        document.querySelectorAll('.transform-handle').forEach(handle => {
+            handle.addEventListener('pointerdown', function(event) {
+                event.preventDefault();
+                const scaleX = document.getElementById('image_scale_x');
+                const scaleY = document.getElementById('image_scale_y');
+                const mask = document.getElementById('photoTransformMask');
+                if (!scaleX || !scaleY || !mask) return;
+
+                const startX = event.clientX;
+                const startY = event.clientY;
+                const startScaleX = Number(scaleX.value);
+                const startScaleY = Number(scaleY.value);
+                const startRect = mask.getBoundingClientRect();
+                const handleType = this.dataset.handle;
+
+                this.setPointerCapture(event.pointerId);
+
+                const onMove = moveEvent => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    let nextScaleX = startScaleX;
+                    let nextScaleY = startScaleY;
+
+                    if (handleType.length === 2) {
+                        const horizontalDelta = handleType.includes('e') ? dx : -dx;
+                        const verticalDelta = handleType.includes('s') ? dy : -dy;
+                        const factor = Math.max(
+                            (startRect.width + horizontalDelta * 2) / startRect.width,
+                            (startRect.height + verticalDelta * 2) / startRect.height
+                        );
+                        nextScaleX = startScaleX * factor;
+                        nextScaleY = startScaleY * factor;
+                    } else {
+                        if (handleType.includes('e')) nextScaleX = startScaleX + (dx * 2 / startRect.width);
+                        if (handleType.includes('w')) nextScaleX = startScaleX - (dx * 2 / startRect.width);
+                        if (handleType.includes('s')) nextScaleY = startScaleY + (dy * 2 / startRect.height);
+                        if (handleType.includes('n')) nextScaleY = startScaleY - (dy * 2 / startRect.height);
+                    }
+
+                    setScaleValue('image_scale_x', nextScaleX);
+                    setScaleValue('image_scale_y', nextScaleY);
+                    updateTransformPreview();
+                };
+
+                const onUp = upEvent => {
+                    this.releasePointerCapture(upEvent.pointerId);
+                    this.removeEventListener('pointermove', onMove);
+                    this.removeEventListener('pointerup', onUp);
+                    refreshGeneratedImage();
+                };
+
+                this.addEventListener('pointermove', onMove);
+                this.addEventListener('pointerup', onUp);
+            });
+        });
+
+        if (photoTransformMask) {
+            photoTransformMask.addEventListener('pointerdown', function(event) {
+                if (event.target.classList.contains('transform-handle')) return;
+                event.preventDefault();
+
+                const startY = event.clientY;
+                const startOffsetY = Number(document.getElementById('image_offset_y')?.value || 0);
+                const startRect = photoTransformMask.getBoundingClientRect();
+
+                photoTransformMask.setPointerCapture(event.pointerId);
+
+                const onMove = moveEvent => {
+                    const dy = moveEvent.clientY - startY;
+                    setOffsetY(startOffsetY + (dy / startRect.height));
+                    updateTransformPreview();
+                };
+
+                const onUp = upEvent => {
+                    photoTransformMask.releasePointerCapture(upEvent.pointerId);
+                    photoTransformMask.removeEventListener('pointermove', onMove);
+                    photoTransformMask.removeEventListener('pointerup', onUp);
+                    refreshGeneratedImage();
+                };
+
+                photoTransformMask.addEventListener('pointermove', onMove);
+                photoTransformMask.addEventListener('pointerup', onUp);
+            });
+        }
 
         // 新增：監聽「圖片雙框」checkbox 的變化
         document.getElementById('dual_image').addEventListener('change', function() {
