@@ -239,32 +239,48 @@
         }
 
         let imageTransformSubmitting = false;
+        let imageTransformPending = false;
+        let imageTransformDirty = false;
+        let imageTransformPromise = Promise.resolve();
 
-        function refreshGeneratedImage() {
-            if (!regenerateForm || imageTransformSubmitting) return;
+        function refreshGeneratedImage(force = false) {
+            if (!regenerateForm) return Promise.resolve();
+            if (!force && !imageTransformDirty) return imageTransformPromise;
+            if (imageTransformSubmitting) {
+                imageTransformPending = true;
+                return imageTransformPromise;
+            }
+
             imageTransformSubmitting = true;
-            fetch(regenerateForm.action, {
-                method: 'POST',
-                body: new FormData(regenerateForm),
-                credentials: 'same-origin'
-            })
-            .then(response => response.text())
-            .then(html => {
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const nextImage = doc.querySelector('#resultImage');
-                const currentImage = document.getElementById('resultImage');
-                const downloadLink = document.getElementById('downloadLink');
-                const nextDownloadLink = doc.querySelector('#downloadLink');
-                if (nextImage && currentImage) {
-                    currentImage.src = nextImage.src;
+            imageTransformPromise = (async () => {
+                try {
+                    do {
+                        imageTransformPending = false;
+                        imageTransformDirty = false;
+                        const response = await fetch(regenerateForm.action, {
+                            method: 'POST',
+                            body: new FormData(regenerateForm),
+                            credentials: 'same-origin'
+                        });
+                        const html = await response.text();
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        const nextImage = doc.querySelector('#resultImage');
+                        const currentImage = document.getElementById('resultImage');
+                        const downloadLink = document.getElementById('downloadLink');
+                        const nextDownloadLink = doc.querySelector('#downloadLink');
+                        if (nextImage && currentImage) {
+                            currentImage.src = nextImage.src;
+                        }
+                        if (downloadLink && nextDownloadLink) {
+                            downloadLink.href = nextDownloadLink.href;
+                        }
+                    } while (imageTransformPending);
+                } finally {
+                    imageTransformSubmitting = false;
                 }
-                if (downloadLink && nextDownloadLink) {
-                    downloadLink.href = nextDownloadLink.href;
-                }
-            })
-            .finally(() => {
-                imageTransformSubmitting = false;
-            });
+            })();
+
+            return imageTransformPromise;
         }
 
         setOffsetY(Number(document.getElementById('image_offset_y')?.value || 0));
@@ -361,6 +377,7 @@
                     this.releasePointerCapture(upEvent.pointerId);
                     this.removeEventListener('pointermove', onMove);
                     this.removeEventListener('pointerup', onUp);
+                    imageTransformDirty = true;
                     refreshGeneratedImage();
                 };
 
@@ -390,6 +407,7 @@
                     photoTransformMask.releasePointerCapture(upEvent.pointerId);
                     photoTransformMask.removeEventListener('pointermove', onMove);
                     photoTransformMask.removeEventListener('pointerup', onUp);
+                    imageTransformDirty = true;
                     refreshGeneratedImage();
                 };
 
@@ -459,24 +477,37 @@
         // 自訂下載檔名功能
         const downloadLink = document.getElementById('downloadLink');
         if (downloadLink) {
-            downloadLink.addEventListener('click', function handleDownloadClick(event) {
+            let downloadInProgress = false;
+            downloadLink.addEventListener('click', async function handleDownloadClick(event) {
                 // 阻止預設的下載行為
                 event.preventDefault();
+                if (downloadInProgress) return;
+                downloadInProgress = true;
 
-                const slug = prompt("請輸入Slag:");
+                try {
+                    await refreshGeneratedImage(true);
 
-                // 如果使用者輸入了內容並按下確定
-                if (slug) {
-                    const now = new Date();
-                    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 月份是 0-11
-                    const day = now.getDate().toString().padStart(2, '0');
-                    const datePrefix = `${month}${day}`;
-                    
-                    // 設定新的檔名
-                    this.download = `${datePrefix}_${slug}.png`;
-                    this.click(); // 再次觸發點擊，這次會使用新檔名進行下載
+                    const slug = prompt("請輸入Slag:");
+
+                    // 如果使用者輸入了內容並按下確定
+                    if (slug) {
+                        const now = new Date();
+                        const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 月份是 0-11
+                        const day = now.getDate().toString().padStart(2, '0');
+                        const datePrefix = `${month}${day}`;
+                        
+                        // 設定新的檔名
+                        const directDownload = document.createElement('a');
+                        directDownload.href = this.href;
+                        directDownload.download = `${datePrefix}_${slug}.png`;
+                        document.body.appendChild(directDownload);
+                        directDownload.click();
+                        directDownload.remove();
+                    }
+                } finally {
+                    downloadInProgress = false;
                 }
-            }, { once: true }); // { once: true } 確保此監聽器只觸發一次，避免無限循環
+            });
         }
 
     </script>
