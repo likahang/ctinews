@@ -15,7 +15,7 @@ LAYOUT_CONFIG = {
         "white_area_height": 960,
         "header_height": 171,
         "content_image_gap": 10,  # 內文與圖片之間的間距
-        "image_mask_left": 38,
+        "image_mask_left": 39,
         "image_mask_top": 448,
         "image_mask_width": 1848,
         "image_mask_height": 632,

@@ -109,7 +109,7 @@ img {
 .photo-transform-mask {
     position: absolute;
     overflow: hidden;
-    background: #fff;
+    background: #f7f8fd;
     touch-action: none;
     cursor: grab;
     z-index: 1;

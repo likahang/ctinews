@@ -77,7 +77,7 @@ def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, 
     resized_height = max(1, int(image.height * base_scale * scale_y))
     resized = image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
 
-    canvas = Image.new('RGB', (mask_width, mask_height), color='white')
+    canvas = Image.new('RGB', (mask_width, mask_height), color='#f7f8fd')
     crop_left = max(0, (resized_width - mask_width) // 2)
     image_top = int(offset_y * mask_height)
     crop_top = max(0, -image_top)
