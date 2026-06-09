@@ -79,14 +79,15 @@ def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, 
 
     canvas = Image.new('RGB', (mask_width, mask_height), color='white')
     crop_left = max(0, (resized_width - mask_width) // 2)
-    crop_top = int((resized_height - mask_height) // 2 - (offset_y * mask_height))
-    crop_top = max(0, min(crop_top, max(0, resized_height - mask_height)))
+    image_top = int(offset_y * mask_height)
+    crop_top = max(0, -image_top)
+    crop_top = min(crop_top, max(0, resized_height - mask_height))
     crop_right = min(resized_width, crop_left + mask_width)
     crop_bottom = min(resized_height, crop_top + mask_height)
     cropped = resized.crop((crop_left, crop_top, crop_right, crop_bottom))
 
     paste_x = max(0, (mask_width - cropped.width) // 2)
-    paste_y = int((mask_height - cropped.height) // 2 + (offset_y * mask_height))
+    paste_y = max(0, image_top)
     paste_y = max(0, min(paste_y, max(0, mask_height - cropped.height)))
     if cropped.mode == 'RGBA':
         canvas.paste(cropped, (paste_x, paste_y), cropped)
@@ -96,38 +97,11 @@ def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, 
 
 def calculate_image_mask_rect(data):
     cfg = LAYOUT_CONFIG
-    start_x = cfg['layout']['white_area_left']
-    current_y = cfg['layout']['white_area_top']
-    white_area_width = cfg['layout']['white_area_width']
-    white_area_height = cfg['layout']['white_area_height']
-    header_height = cfg['layout']['header_height']
-    title_cfg = cfg['title']
-    content_cfg = cfg['content']
-    image_cfg = cfg['image']
-
-    title_font = get_font(title_cfg['base_font_size'], bold=False)
-    title_text = data.get('title', '')
-    title_lines = wrap_text(title_text, title_font, white_area_width - title_cfg['horizontal_padding'])
-    current_y += header_height
-
-    content_font = get_font(content_cfg['font_size'])
-    content_text = data.get('content', '')
-    content_lines = wrap_text(content_text, content_font, white_area_width - title_cfg['horizontal_padding'])
-    content_actual_height = content_cfg['top_padding'] + (len(content_lines) * content_cfg['line_height']) + content_cfg['bottom_padding']
-    current_y += content_actual_height + cfg['layout']['content_image_gap']
-
-    image_height = max(image_cfg['min_height'], cfg['layout']['white_area_top'] + white_area_height - current_y)
-    if image_height < image_cfg['min_height_for_full_content']:
-        max_content_lines = min(len(content_lines), content_cfg['max_lines_when_cramped'])
-        content_actual_height = content_cfg['top_padding'] + (max_content_lines * content_cfg['line_height']) + content_cfg['bottom_padding']
-        current_y = cfg['layout']['white_area_top'] + header_height + content_actual_height + cfg['layout']['content_image_gap']
-        image_height = cfg['layout']['white_area_top'] + white_area_height - current_y
-
     return {
-        'x': start_x,
-        'y': current_y,
-        'width': white_area_width,
-        'height': image_height,
+        'x': cfg['layout'].get('image_mask_left', cfg['layout']['white_area_left']),
+        'y': cfg['layout'].get('image_mask_top', 448),
+        'width': cfg['layout'].get('image_mask_width', cfg['layout']['white_area_width']),
+        'height': cfg['layout'].get('image_mask_height', 632),
         'layout_width': cfg['layout']['width'],
         'layout_height': cfg['layout']['height'],
     }
@@ -284,6 +258,11 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
         
         current_y += content_actual_height + cfg['layout']['content_image_gap']
         image_height = cfg['layout']['white_area_top'] + white_area_height - current_y
+
+    mask_rect = calculate_image_mask_rect(data)
+    current_y = mask_rect['y']
+    white_area_width = mask_rect['width']
+    image_height = mask_rect['height']
     
     # 6. 繪製圖片區域（動態高度）
     # <<<< 修正：雙框圖片邏輯 >>>>

@@ -118,16 +118,16 @@
                                 {% if request.form.get('show_source') == 'on' and alt_text %}
                                     <div class="transform-source-label">{{ alt_text }}</div>
                                 {% endif %}
-                                <div class="transform-box" id="transformBox">
-                                    <span class="transform-handle handle-nw" data-handle="nw"></span>
-                                    <span class="transform-handle handle-n" data-handle="n"></span>
-                                    <span class="transform-handle handle-ne" data-handle="ne"></span>
-                                    <span class="transform-handle handle-e" data-handle="e"></span>
-                                    <span class="transform-handle handle-se" data-handle="se"></span>
-                                    <span class="transform-handle handle-s" data-handle="s"></span>
-                                    <span class="transform-handle handle-sw" data-handle="sw"></span>
-                                    <span class="transform-handle handle-w" data-handle="w"></span>
-                                </div>
+                            </div>
+                            <div class="transform-box" id="transformBox">
+                                <span class="transform-handle handle-nw" data-handle="nw"></span>
+                                <span class="transform-handle handle-n" data-handle="n"></span>
+                                <span class="transform-handle handle-ne" data-handle="ne"></span>
+                                <span class="transform-handle handle-e" data-handle="e"></span>
+                                <span class="transform-handle handle-se" data-handle="se"></span>
+                                <span class="transform-handle handle-s" data-handle="s"></span>
+                                <span class="transform-handle handle-sw" data-handle="sw"></span>
+                                <span class="transform-handle handle-w" data-handle="w"></span>
                             </div>
                         {% endif %}
                     </div>
@@ -194,11 +194,15 @@
             const previewHeight = previewWidth * layoutHeight / layoutWidth;
             const px = previewWidth / layoutWidth;
             const py = previewHeight / layoutHeight;
+            const maskLeft = maskX * px;
+            const maskTop = maskY * py;
+            const maskPixelWidth = maskWidth * px;
+            const maskPixelHeight = maskHeight * py;
 
-            mask.style.left = `${maskX * px}px`;
-            mask.style.top = `${maskY * py}px`;
-            mask.style.width = `${maskWidth * px}px`;
-            mask.style.height = `${maskHeight * py}px`;
+            mask.style.left = `${maskLeft}px`;
+            mask.style.top = `${maskTop}px`;
+            mask.style.width = `${maskPixelWidth}px`;
+            mask.style.height = `${maskPixelHeight}px`;
 
             const scaleX = Number(scaleXInput.value);
             const scaleY = Number(scaleYInput.value);
@@ -206,15 +210,15 @@
             const baseScale = Math.max(maskWidth / photo.naturalWidth, maskHeight / photo.naturalHeight);
             const photoWidth = photo.naturalWidth * baseScale * scaleX * px;
             const photoHeight = photo.naturalHeight * baseScale * scaleY * py;
-            const left = ((maskWidth * px) - photoWidth) / 2;
-            const top = ((maskHeight * py) - photoHeight) / 2 + (offsetY * maskHeight * py);
+            const left = (maskPixelWidth - photoWidth) / 2;
+            const top = offsetY * maskPixelHeight;
 
             photo.style.width = `${photoWidth}px`;
             photo.style.height = `${photoHeight}px`;
             photo.style.left = `${left}px`;
             photo.style.top = `${top}px`;
-            box.style.left = `${left}px`;
-            box.style.top = `${top}px`;
+            box.style.left = `${maskLeft + left}px`;
+            box.style.top = `${maskTop + top}px`;
             box.style.width = `${photoWidth}px`;
             box.style.height = `${photoHeight}px`;
 
@@ -291,7 +295,7 @@
 
         document.addEventListener('pointerdown', function(event) {
             if (!photoTransformMask || !transformBox) return;
-            if (!photoTransformMask.contains(event.target)) {
+            if (!photoTransformMask.contains(event.target) && !transformBox.contains(event.target)) {
                 hideTransformControls();
             }
         });
@@ -301,14 +305,20 @@
                 event.preventDefault();
                 const scaleX = document.getElementById('image_scale_x');
                 const scaleY = document.getElementById('image_scale_y');
+                const offsetY = document.getElementById('image_offset_y');
                 const mask = document.getElementById('photoTransformMask');
-                if (!scaleX || !scaleY || !mask) return;
+                const box = document.getElementById('transformBox');
+                if (!scaleX || !scaleY || !offsetY || !mask || !box) return;
 
                 const startX = event.clientX;
                 const startY = event.clientY;
                 const startScaleX = Number(scaleX.value);
                 const startScaleY = Number(scaleY.value);
+                const startOffsetY = Number(offsetY.value);
                 const startRect = mask.getBoundingClientRect();
+                const startBoxRect = box.getBoundingClientRect();
+                const startTopPx = startOffsetY * startRect.height;
+                const startBottomPx = startTopPx + startBoxRect.height;
                 const handleType = this.dataset.handle;
 
                 this.setPointerCapture(event.pointerId);
@@ -323,20 +333,27 @@
                         const horizontalDelta = handleType.includes('e') ? dx : -dx;
                         const verticalDelta = handleType.includes('s') ? dy : -dy;
                         const factor = Math.max(
-                            (startRect.width + horizontalDelta * 2) / startRect.width,
-                            (startRect.height + verticalDelta * 2) / startRect.height
+                            (startBoxRect.width + horizontalDelta * 2) / startBoxRect.width,
+                            (startBoxRect.height + verticalDelta) / startBoxRect.height
                         );
                         nextScaleX = startScaleX * factor;
                         nextScaleY = startScaleY * factor;
                     } else {
                         if (handleType.includes('e')) nextScaleX = startScaleX + (dx * 2 / startRect.width);
                         if (handleType.includes('w')) nextScaleX = startScaleX - (dx * 2 / startRect.width);
-                        if (handleType.includes('s')) nextScaleY = startScaleY + (dy * 2 / startRect.height);
-                        if (handleType.includes('n')) nextScaleY = startScaleY - (dy * 2 / startRect.height);
+                        if (handleType.includes('s')) nextScaleY = startScaleY * ((startBoxRect.height + dy) / startBoxRect.height);
+                        if (handleType.includes('n')) nextScaleY = startScaleY * ((startBoxRect.height - dy) / startBoxRect.height);
                     }
 
                     setScaleValue('image_scale_x', nextScaleX);
                     setScaleValue('image_scale_y', nextScaleY);
+                    if (handleType.includes('n')) {
+                        const clampedScaleY = Number(scaleY.value);
+                        const nextHeight = startBoxRect.height * (clampedScaleY / startScaleY);
+                        setOffsetY((startBottomPx - nextHeight) / startRect.height);
+                    } else if (handleType.includes('s')) {
+                        setOffsetY(startOffsetY);
+                    }
                     updateTransformPreview();
                 };
 
