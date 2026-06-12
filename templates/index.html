@@ -207,9 +207,8 @@
             const scaleX = Number(scaleXInput.value);
             const scaleY = Number(scaleYInput.value);
             const offsetY = Number(offsetYInput.value);
-            const baseScale = Math.max(maskWidth / photo.naturalWidth, maskHeight / photo.naturalHeight);
-            const photoWidth = photo.naturalWidth * baseScale * scaleX * px;
-            const photoHeight = photo.naturalHeight * baseScale * scaleY * py;
+            const photoWidth = maskPixelWidth * scaleX;
+            const photoHeight = maskPixelHeight * scaleY;
             const left = (maskPixelWidth - photoWidth) / 2;
             const top = offsetY * maskPixelHeight;
 

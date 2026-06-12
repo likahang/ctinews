@@ -72,9 +72,8 @@ def parse_image_offset(value, default=0.0):
     return max(-1.0, min(offset, 1.0))
 
 def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, offset_y=0.0):
-    base_scale = max(mask_width / image.width, mask_height / image.height)
-    resized_width = max(1, int(image.width * base_scale * scale_x))
-    resized_height = max(1, int(image.height * base_scale * scale_y))
+    resized_width = max(1, int(mask_width * scale_x))
+    resized_height = max(1, int(mask_height * scale_y))
     resized = image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
 
     canvas = Image.new('RGB', (mask_width, mask_height), color='#f7f8fd')
