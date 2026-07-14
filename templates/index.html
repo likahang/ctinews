@@ -66,9 +66,11 @@
                         <input type="hidden" name="custom_source_text" value="{{ request.form.get('custom_source_text') }}">
                     {% endif %}
 
-                    <input type="hidden" id="image_scale_x" name="image_scale_x" value="{{ image_scale_x|default(1.0) }}">
-                    <input type="hidden" id="image_scale_y" name="image_scale_y" value="{{ image_scale_y|default(1.0) }}">
-                    <input type="hidden" id="image_offset_y" name="image_offset_y" value="{{ image_offset_y|default(0.0) }}">
+                    {% for target in transform_targets %}
+                        <input type="hidden" class="image-scale-x" data-target="{{ target.id }}" name="{{ target.scale_x_name }}" value="{{ target.scale_x }}">
+                        <input type="hidden" class="image-scale-y" data-target="{{ target.id }}" name="{{ target.scale_y_name }}" value="{{ target.scale_y }}">
+                        <input type="hidden" class="image-offset-y" data-target="{{ target.id }}" name="{{ target.offset_y_name }}" value="{{ target.offset_y }}">
+                    {% endfor %}
 
                     <h2>生成結果:</h2>
                     
@@ -90,7 +92,12 @@
                         <button type="button" class="edit-btn">編輯</button>
                         <button type="button" class="save-btn" style="display:none;">儲存</button>
                         <label>圖片:</label>
-                        <input type="text" class="editable-input" name="edited_image_url" value="{{ image_url }}" readonly>
+                        {% if is_dual_image %}
+                            <input type="text" class="editable-input" name="edited_image1_url" value="{{ image1_url }}" readonly>
+                            <input type="text" class="editable-input" name="edited_image2_url" value="{{ image2_url }}" readonly>
+                        {% else %}
+                            <input type="text" class="editable-input" name="edited_image_url" value="{{ image_url }}" readonly>
+                        {% endif %}
                     </div>
 
                     <div class="editable-field">
@@ -106,29 +113,33 @@
                          data-mask-width="{{ image_mask_rect.width }}"
                          data-mask-height="{{ image_mask_rect.height }}"
                          data-layout-width="{{ image_mask_rect.layout_width }}"
-                         data-layout-height="{{ image_mask_rect.layout_height }}"
-                         data-scale-x="{{ image_scale_x|default(1.0) }}"
-                         data-scale-y="{{ image_scale_y|default(1.0) }}"
-                         data-offset-y="{{ image_offset_y|default(0.0) }}"
-                         data-image-url="{{ image_url }}">
+                         data-layout-height="{{ image_mask_rect.layout_height }}">
                         <img id="resultImage" src="{{ image_data_uri }}" alt="生成的排版圖片">
-                        {% if image_url %}
-                            <div class="photo-transform-mask" id="photoTransformMask">
-                                <img id="photoTransformImage" src="{{ image_url }}" alt="">
-                                {% if request.form.get('show_source') == 'on' and alt_text %}
-                                    <div class="transform-source-label">{{ alt_text }}</div>
-                                {% endif %}
+                        {% for target in transform_targets %}
+                            {% if target.url %}
+                            <div class="photo-transform-target" data-target="{{ target.id }}"
+                                 data-mask-x="{{ target.x }}"
+                                 data-mask-y="{{ target.y }}"
+                                 data-mask-width="{{ target.width }}"
+                                 data-mask-height="{{ target.height }}">
+                                <div class="photo-transform-mask" data-target="{{ target.id }}">
+                                    <img class="photo-transform-image" data-target="{{ target.id }}" src="{{ target.url }}" alt="">
+                                </div>
+                                <div class="transform-box" data-target="{{ target.id }}">
+                                    <span class="transform-handle handle-nw" data-handle="nw"></span>
+                                    <span class="transform-handle handle-n" data-handle="n"></span>
+                                    <span class="transform-handle handle-ne" data-handle="ne"></span>
+                                    <span class="transform-handle handle-e" data-handle="e"></span>
+                                    <span class="transform-handle handle-se" data-handle="se"></span>
+                                    <span class="transform-handle handle-s" data-handle="s"></span>
+                                    <span class="transform-handle handle-sw" data-handle="sw"></span>
+                                    <span class="transform-handle handle-w" data-handle="w"></span>
+                                </div>
                             </div>
-                            <div class="transform-box" id="transformBox">
-                                <span class="transform-handle handle-nw" data-handle="nw"></span>
-                                <span class="transform-handle handle-n" data-handle="n"></span>
-                                <span class="transform-handle handle-ne" data-handle="ne"></span>
-                                <span class="transform-handle handle-e" data-handle="e"></span>
-                                <span class="transform-handle handle-se" data-handle="se"></span>
-                                <span class="transform-handle handle-s" data-handle="s"></span>
-                                <span class="transform-handle handle-sw" data-handle="sw"></span>
-                                <span class="transform-handle handle-w" data-handle="w"></span>
-                            </div>
+                            {% endif %}
+                        {% endfor %}
+                        {% if request.form.get('show_source') == 'on' and alt_text %}
+                            <div class="transform-source-label">{{ alt_text }}</div>
                         {% endif %}
                     </div>
                     <br>
@@ -315,7 +326,7 @@
             }
         });
 
-        document.querySelectorAll('.transform-handle').forEach(handle => {
+        document.querySelectorAll('.legacy-transform-handle').forEach(handle => {
             handle.addEventListener('pointerdown', function(event) {
                 event.preventDefault();
                 const scaleX = document.getElementById('image_scale_x');
@@ -416,6 +427,237 @@
         }
 
         // 新增：監聽「圖片雙框」checkbox 的變化
+        function transformState(targetId) {
+            return {
+                target: document.querySelector(`.photo-transform-target[data-target="${targetId}"]`),
+                mask: document.querySelector(`.photo-transform-mask[data-target="${targetId}"]`),
+                photo: document.querySelector(`.photo-transform-image[data-target="${targetId}"]`),
+                box: document.querySelector(`.transform-box[data-target="${targetId}"]`),
+                scaleX: document.querySelector(`.image-scale-x[data-target="${targetId}"]`),
+                scaleY: document.querySelector(`.image-scale-y[data-target="${targetId}"]`),
+                offsetY: document.querySelector(`.image-offset-y[data-target="${targetId}"]`)
+            };
+        }
+
+        function setTargetScale(targetId, axis, value) {
+            const input = document.querySelector(`.image-scale-${axis}[data-target="${targetId}"]`);
+            if (!input) return;
+            input.value = clampScale(value).toFixed(2);
+        }
+
+        function setTargetOffsetY(targetId, value) {
+            const input = document.querySelector(`.image-offset-y[data-target="${targetId}"]`);
+            if (!input) return;
+            input.value = clampOffset(value).toFixed(3);
+        }
+
+        function updateTargetPreview(targetId) {
+            const preview = document.getElementById('generatedPreview');
+            const state = transformState(targetId);
+            if (!preview || !state.target || !state.mask || !state.photo || !state.box || !state.scaleX || !state.scaleY || !state.offsetY) return;
+
+            const layoutWidth = Number(preview.dataset.layoutWidth);
+            const layoutHeight = Number(preview.dataset.layoutHeight);
+            const maskX = Number(state.target.dataset.maskX);
+            const maskY = Number(state.target.dataset.maskY);
+            const maskWidth = Number(state.target.dataset.maskWidth);
+            const maskHeight = Number(state.target.dataset.maskHeight);
+            const previewWidth = preview.clientWidth;
+            const previewHeight = previewWidth * layoutHeight / layoutWidth;
+            const px = previewWidth / layoutWidth;
+            const py = previewHeight / layoutHeight;
+            const maskLeft = maskX * px;
+            const maskTop = maskY * py;
+            const maskPixelWidth = maskWidth * px;
+            const maskPixelHeight = maskHeight * py;
+
+            state.target.style.left = `${maskLeft}px`;
+            state.target.style.top = `${maskTop}px`;
+            state.target.style.width = `${maskPixelWidth}px`;
+            state.target.style.height = `${maskPixelHeight}px`;
+            state.mask.style.left = '0px';
+            state.mask.style.top = '0px';
+            state.mask.style.width = `${maskPixelWidth}px`;
+            state.mask.style.height = `${maskPixelHeight}px`;
+
+            const scaleX = Number(state.scaleX.value);
+            const scaleY = Number(state.scaleY.value);
+            const offsetY = Number(state.offsetY.value);
+            const photoWidth = maskPixelWidth * scaleX;
+            const photoHeight = maskPixelHeight * scaleY;
+            const left = (maskPixelWidth - photoWidth) / 2;
+            const top = offsetY * maskPixelHeight;
+
+            state.photo.style.width = `${photoWidth}px`;
+            state.photo.style.height = `${photoHeight}px`;
+            state.photo.style.left = `${left}px`;
+            state.photo.style.top = `${top}px`;
+            state.box.style.left = `${left}px`;
+            state.box.style.top = `${top}px`;
+            state.box.style.width = `${photoWidth}px`;
+            state.box.style.height = `${photoHeight}px`;
+        }
+
+        function updateSourceLabelPreview() {
+            const preview = document.getElementById('generatedPreview');
+            const sourceLabel = document.querySelector('.transform-source-label');
+            if (!preview || !sourceLabel) return;
+
+            const layoutWidth = Number(preview.dataset.layoutWidth);
+            const layoutHeight = Number(preview.dataset.layoutHeight);
+            const maskX = Number(preview.dataset.maskX);
+            const maskY = Number(preview.dataset.maskY);
+            const maskWidth = Number(preview.dataset.maskWidth);
+            const maskHeight = Number(preview.dataset.maskHeight);
+            const previewWidth = preview.clientWidth;
+            const previewHeight = previewWidth * layoutHeight / layoutWidth;
+            const px = previewWidth / layoutWidth;
+            const py = previewHeight / layoutHeight;
+            const stroke = Math.max(1, 3 * px);
+
+            sourceLabel.style.right = `${(layoutWidth - maskX - maskWidth + 30) * px}px`;
+            sourceLabel.style.bottom = `${(layoutHeight - maskY - maskHeight + 60) * py}px`;
+            sourceLabel.style.fontSize = `${36 * px}px`;
+            sourceLabel.style.textShadow = [
+                `${-stroke}px ${-stroke}px 0 #000`,
+                `${stroke}px ${-stroke}px 0 #000`,
+                `${-stroke}px ${stroke}px 0 #000`,
+                `${stroke}px ${stroke}px 0 #000`,
+                `0 0 ${stroke}px #000`
+            ].join(', ');
+        }
+
+        function updateAllTargetPreviews() {
+            document.querySelectorAll('.photo-transform-target').forEach(target => {
+                updateTargetPreview(target.dataset.target);
+            });
+            updateSourceLabelPreview();
+        }
+
+        document.querySelectorAll('.photo-transform-image').forEach(photo => {
+            photo.addEventListener('load', () => updateTargetPreview(photo.dataset.target));
+        });
+        window.addEventListener('resize', updateAllTargetPreviews);
+        updateAllTargetPreviews();
+
+        document.querySelectorAll('.photo-transform-mask').forEach(mask => {
+            mask.addEventListener('pointerdown', function() {
+                const state = transformState(this.dataset.target);
+                if (state.box) state.box.classList.add('is-visible');
+            });
+        });
+
+        document.addEventListener('pointerdown', function(event) {
+            document.querySelectorAll('.photo-transform-target').forEach(target => {
+                if (!target.contains(event.target)) {
+                    const box = target.querySelector('.transform-box');
+                    if (box) box.classList.remove('is-visible');
+                }
+            });
+        });
+
+        document.querySelectorAll('.transform-handle').forEach(handle => {
+            handle.addEventListener('pointerdown', function(event) {
+                event.preventDefault();
+                const target = this.closest('.photo-transform-target');
+                if (!target) return;
+                const targetId = target.dataset.target;
+                const state = transformState(targetId);
+                if (!state.scaleX || !state.scaleY || !state.offsetY || !state.mask || !state.box) return;
+
+                const startX = event.clientX;
+                const startY = event.clientY;
+                const startScaleX = Number(state.scaleX.value);
+                const startScaleY = Number(state.scaleY.value);
+                const startOffsetY = Number(state.offsetY.value);
+                const startRect = state.mask.getBoundingClientRect();
+                const startBoxRect = state.box.getBoundingClientRect();
+                const startTopPx = startOffsetY * startRect.height;
+                const startBottomPx = startTopPx + startBoxRect.height;
+                const handleType = this.dataset.handle;
+
+                this.setPointerCapture(event.pointerId);
+
+                const onMove = moveEvent => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    let nextScaleX = startScaleX;
+                    let nextScaleY = startScaleY;
+
+                    if (handleType.length === 2) {
+                        const horizontalDelta = handleType.includes('e') ? dx : -dx;
+                        const verticalDelta = handleType.includes('s') ? dy : -dy;
+                        const factor = Math.max(
+                            (startBoxRect.width + horizontalDelta * 2) / startBoxRect.width,
+                            (startBoxRect.height + verticalDelta) / startBoxRect.height
+                        );
+                        nextScaleX = startScaleX * factor;
+                        nextScaleY = startScaleY * factor;
+                    } else {
+                        if (handleType.includes('e')) nextScaleX = startScaleX + (dx * 2 / startRect.width);
+                        if (handleType.includes('w')) nextScaleX = startScaleX - (dx * 2 / startRect.width);
+                        if (handleType.includes('s')) nextScaleY = startScaleY * ((startBoxRect.height + dy) / startBoxRect.height);
+                        if (handleType.includes('n')) nextScaleY = startScaleY * ((startBoxRect.height - dy) / startBoxRect.height);
+                    }
+
+                    setTargetScale(targetId, 'x', nextScaleX);
+                    setTargetScale(targetId, 'y', nextScaleY);
+                    if (handleType.includes('n')) {
+                        const clampedScaleY = Number(state.scaleY.value);
+                        const nextHeight = startBoxRect.height * (clampedScaleY / startScaleY);
+                        setTargetOffsetY(targetId, (startBottomPx - nextHeight) / startRect.height);
+                    } else if (handleType.includes('s')) {
+                        setTargetOffsetY(targetId, startOffsetY);
+                    }
+                    updateTargetPreview(targetId);
+                };
+
+                const onUp = upEvent => {
+                    this.releasePointerCapture(upEvent.pointerId);
+                    this.removeEventListener('pointermove', onMove);
+                    this.removeEventListener('pointerup', onUp);
+                    imageTransformDirty = true;
+                    refreshGeneratedImage();
+                };
+
+                this.addEventListener('pointermove', onMove);
+                this.addEventListener('pointerup', onUp);
+            });
+        });
+
+        document.querySelectorAll('.photo-transform-mask').forEach(mask => {
+            mask.addEventListener('pointerdown', function(event) {
+                if (event.target.classList.contains('transform-handle')) return;
+                event.preventDefault();
+                const targetId = this.dataset.target;
+                const state = transformState(targetId);
+                if (!state.offsetY) return;
+
+                const startY = event.clientY;
+                const startOffsetY = Number(state.offsetY.value || 0);
+                const startRect = this.getBoundingClientRect();
+
+                this.setPointerCapture(event.pointerId);
+
+                const onMove = moveEvent => {
+                    const dy = moveEvent.clientY - startY;
+                    setTargetOffsetY(targetId, startOffsetY + (dy / startRect.height));
+                    updateTargetPreview(targetId);
+                };
+
+                const onUp = upEvent => {
+                    this.releasePointerCapture(upEvent.pointerId);
+                    this.removeEventListener('pointermove', onMove);
+                    this.removeEventListener('pointerup', onUp);
+                    imageTransformDirty = true;
+                    refreshGeneratedImage();
+                };
+
+                this.addEventListener('pointermove', onMove);
+                this.addEventListener('pointerup', onUp);
+            });
+        });
+
         document.getElementById('dual_image').addEventListener('change', function() {
             const dualImageInputs = document.getElementById('dual_image_inputs');
             if (this.checked) {
@@ -439,9 +681,11 @@
         document.querySelectorAll('.edit-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const fieldDiv = this.closest('.editable-field');
-                const input = fieldDiv.querySelector('.editable-input');
-                input.readOnly = false;
-                input.focus();
+                const inputs = fieldDiv.querySelectorAll('.editable-input');
+                inputs.forEach(input => {
+                    input.readOnly = false;
+                });
+                if (inputs[0]) inputs[0].focus();
                 this.style.display = 'none';
                 fieldDiv.querySelector('.save-btn').style.display = 'inline-block';
             });
@@ -450,7 +694,9 @@
         document.querySelectorAll('.save-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const fieldDiv = this.closest('.editable-field');
-                fieldDiv.querySelector('.editable-input').readOnly = true; // 鎖定輸入框即可，無需切換元素
+                fieldDiv.querySelectorAll('.editable-input').forEach(input => {
+                    input.readOnly = true;
+                }); // 鎖定輸入框即可，無需切換元素
 
                 // 若使用者編輯的是「圖片來源描述」，同步更新 hidden custom_source_text
                 const form = document.getElementById('regenerateForm');

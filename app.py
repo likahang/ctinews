@@ -71,6 +71,15 @@ def parse_image_offset(value, default=0.0):
         return default
     return max(-1.0, min(offset, 1.0))
 
+def parse_transform_values(prefix='', fallback=None):
+    fallback = fallback or {}
+    name = lambda key: f"{prefix}_{key}" if prefix else key
+    return {
+        'scale_x': parse_image_scale(request.form.get(name('scale_x')), fallback.get('scale_x', 1.0)),
+        'scale_y': parse_image_scale(request.form.get(name('scale_y')), fallback.get('scale_y', 1.0)),
+        'offset_y': parse_image_offset(request.form.get(name('offset_y')), fallback.get('offset_y', 0.0)),
+    }
+
 def fit_image_to_mask(image, mask_width, mask_height, scale_x=1.0, scale_y=1.0, offset_y=0.0):
     resized_width = max(1, int(mask_width * scale_x))
     resized_height = max(1, int(mask_height * scale_y))
@@ -105,7 +114,17 @@ def calculate_image_mask_rect(data):
         'layout_height': cfg['layout']['height'],
     }
 
-def create_layout_image(data, show_source=True, dual_image_data=None, custom_source_text=None, image_scale_x=1.0, image_scale_y=1.0, image_offset_y=0.0):
+def calculate_dual_image_mask_rects(data):
+    cfg = LAYOUT_CONFIG
+    mask = calculate_image_mask_rect(data)
+    gap = cfg['image']['dual_image_gap']
+    image_width = (mask['width'] - gap) // 2
+    return [
+        {**mask, 'id': 'image1', 'x': mask['x'], 'width': image_width},
+        {**mask, 'id': 'image2', 'x': mask['x'] + image_width + gap, 'width': image_width},
+    ]
+
+def create_layout_image(data, show_source=True, dual_image_data=None, custom_source_text=None, image_scale_x=1.0, image_scale_y=1.0, image_offset_y=0.0, image1_transform=None, image2_transform=None):
     """創建自動排版圖片"""
     
     # 從設定檔讀取參數
@@ -288,10 +307,12 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
         gap = image_cfg['dual_image_gap']
         img_width = (white_area_width - gap) // 2
         img_height = image_height
+        image1_transform = image1_transform or {'scale_x': image_scale_x, 'scale_y': image_scale_y, 'offset_y': image_offset_y}
+        image2_transform = image2_transform or {'scale_x': image_scale_x, 'scale_y': image_scale_y, 'offset_y': image_offset_y}
     
         # 貼上第一張圖
         if img1:
-            img1_resized = fit_image_to_mask(img1, img_width, img_height, image_scale_x, image_scale_y, image_offset_y)
+            img1_resized = fit_image_to_mask(img1, img_width, img_height, image1_transform['scale_x'], image1_transform['scale_y'], image1_transform['offset_y'])
             background.paste(img1_resized, (start_x, current_y))
         else:
             draw.rectangle([start_x, current_y, start_x + img_width, current_y + img_height], fill='grey')
@@ -299,7 +320,7 @@ def create_layout_image(data, show_source=True, dual_image_data=None, custom_sou
     
         # 貼上第二張圖
         if img2:
-            img2_resized = fit_image_to_mask(img2, img_width, img_height, image_scale_x, image_scale_y, image_offset_y)
+            img2_resized = fit_image_to_mask(img2, img_width, img_height, image2_transform['scale_x'], image2_transform['scale_y'], image2_transform['offset_y'])
             background.paste(img2_resized, (start_x + img_width + gap, current_y))
         else:
             draw.rectangle([start_x + img_width + gap, current_y, start_x + white_area_width, current_y + img_height], fill='grey')
@@ -486,12 +507,17 @@ def generate_image():
         image_scale_x = parse_image_scale(request.form.get('image_scale_x'), 1.0)
         image_scale_y = parse_image_scale(request.form.get('image_scale_y'), 1.0)
         image_offset_y = parse_image_offset(request.form.get('image_offset_y'), 0.0)
+        base_transform = {'scale_x': image_scale_x, 'scale_y': image_scale_y, 'offset_y': image_offset_y}
+        image1_transform = parse_transform_values('image1', base_transform)
+        image2_transform = parse_transform_values('image2', base_transform)
         
         # 檢查是否有編輯過的文字傳入
         edited_title = request.form.get('edited_title')
         edited_content = request.form.get('edited_content')
         edited_alt_text = request.form.get('edited_alt_text')
         edited_image_url = request.form.get('edited_image_url')
+        edited_image1_url = request.form.get('edited_image1_url')
+        edited_image2_url = request.form.get('edited_image2_url')
         
         # 重新生成時，優先使用「圖片來源描述」欄位目前的值，
         # 避免舊的 hidden custom_source_text 蓋掉剛編輯的文字。
@@ -542,16 +568,16 @@ def generate_image():
             dual_image_data = {
                 'title': title, # 直接使用從 soup 提取的資料
                 'content': content,
-                'img1_url': all_images[img1_idx - 1]['image_url'],
+                'img1_url': edited_image1_url if edited_image1_url is not None else all_images[img1_idx - 1]['image_url'],
                 'alt_text': edited_alt_text if edited_alt_text is not None else all_images[img1_idx - 1]['alt_text'],
-                'img2_url': all_images[img2_idx - 1]['image_url'],
+                'img2_url': edited_image2_url if edited_image2_url is not None else all_images[img2_idx - 1]['image_url'],
                 'img1_idx': img1_idx,
                 'img2_idx': img2_idx,
                 'url': url # 將當前 url 傳遞給繪圖函式以利快取
             }
             # 將 dual_image_data 同時指派給 result，以供後續程式碼使用
             result = dual_image_data
-            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data, custom_source_text=custom_source_text, image_scale_x=image_scale_x, image_scale_y=image_scale_y, image_offset_y=image_offset_y)
+            layout_image = create_layout_image(dual_image_data, show_source=show_source, dual_image_data=dual_image_data, custom_source_text=custom_source_text, image_scale_x=image_scale_x, image_scale_y=image_scale_y, image_offset_y=image_offset_y, image1_transform=image1_transform, image2_transform=image2_transform)
 
         else:
             # 原本的單張圖片模式
@@ -589,6 +615,42 @@ def generate_image():
         # 注意：custom_source_text 可能是空字串，需要檢查是否為真值
         display_alt_text = custom_source_text if (custom_source_text and custom_source_text.strip()) else result['alt_text']
         image_mask_rect = calculate_image_mask_rect(result)
+        if is_dual_image and dual_image_data:
+            dual_rects = calculate_dual_image_mask_rects(result)
+            transform_targets = [
+                {
+                    **dual_rects[0],
+                    'url': dual_image_data.get('img1_url', ''),
+                    'scale_x': image1_transform['scale_x'],
+                    'scale_y': image1_transform['scale_y'],
+                    'offset_y': image1_transform['offset_y'],
+                    'scale_x_name': 'image1_scale_x',
+                    'scale_y_name': 'image1_scale_y',
+                    'offset_y_name': 'image1_offset_y',
+                },
+                {
+                    **dual_rects[1],
+                    'url': dual_image_data.get('img2_url', ''),
+                    'scale_x': image2_transform['scale_x'],
+                    'scale_y': image2_transform['scale_y'],
+                    'offset_y': image2_transform['offset_y'],
+                    'scale_x_name': 'image2_scale_x',
+                    'scale_y_name': 'image2_scale_y',
+                    'offset_y_name': 'image2_offset_y',
+                },
+            ]
+        else:
+            transform_targets = [{
+                **image_mask_rect,
+                'id': 'image',
+                'url': result.get('image_url', ''),
+                'scale_x': image_scale_x,
+                'scale_y': image_scale_y,
+                'offset_y': image_offset_y,
+                'scale_x_name': 'image_scale_x',
+                'scale_y_name': 'image_scale_y',
+                'offset_y_name': 'image_offset_y',
+            }]
 
         return render_template(
             'index.html',
@@ -597,6 +659,9 @@ def generate_image():
             content_snippet=result['content'],
             alt_text=display_alt_text,
             image_url=result.get('image_url', ''), # 將 image_url 傳遞給模板
+            image1_url=result.get('img1_url', ''),
+            image2_url=result.get('img2_url', ''),
+            is_dual_image=is_dual_image,
             image_scale_x=image_scale_x,
             image_scale_y=image_scale_y,
             image_offset_y=image_offset_y,
@@ -604,6 +669,7 @@ def generate_image():
             image_scale_y_pct=int(round(image_scale_y * 100)),
             image_offset_y_pct=int(round(image_offset_y * 100)),
             image_mask_rect=image_mask_rect,
+            transform_targets=transform_targets,
             custom_source_text=custom_source_text if (custom_source_text and custom_source_text.strip()) else '' # 將 custom_source_text 傳遞給模板，以便重新生成時使用
         )
         
